@@ -200,6 +200,10 @@ export const useFormStore = defineStore('form', () => {
   
   /**
    * 移动字段
+   * @param fromRowIndex 源行索引
+   * @param fromColIndex 源列索引
+   * @param toRowIndex 目标行索引
+   * @param toColIndex 目标列索引
    */
   const moveField = (
     fromRowIndex: number,
@@ -208,28 +212,58 @@ export const useFormStore = defineStore('form', () => {
     toColIndex: number
   ): void => {
     const field = schema.value.fields[fromRowIndex]?.[fromColIndex]
-    if (!field) return
+    console.log('[moveField] 开始执行:', {
+      from: { row: fromRowIndex, col: fromColIndex },
+      to: { row: toRowIndex, col: toColIndex },
+      fieldLabel: field?.label
+    })
     
+    if (!field) {
+      console.log('[moveField] 字段不存在')
+      return
+    }
+
     // 移除原位置的字段
     schema.value.fields[fromRowIndex].splice(fromColIndex, 1)
-    
+    console.log('[moveField] 移除字段后，fields:', JSON.stringify(schema.value.fields.map(r => r.map(f => f.label))))
+
     // 如果原行为空，删除该行
     if (schema.value.fields[fromRowIndex].length === 0) {
       schema.value.fields.splice(fromRowIndex, 1)
+      console.log('[moveField] 原行为空，删除该行')
       // 调整目标行索引
       if (toRowIndex > fromRowIndex) {
         toRowIndex--
+        console.log('[moveField] 调整目标行索引为:', toRowIndex)
       }
     }
-    
+
+    // 跨行移动时，调整目标列索引
+    if (fromRowIndex !== toRowIndex) {
+      // 跨行移动时，将字段添加到目标行的末尾
+      toColIndex = schema.value.fields[toRowIndex]?.length || 0
+      console.log('[moveField] 跨行移动，调整目标列为末尾:', toColIndex)
+    } else {
+      // 同行移动时，调整列索引（移除元素后，后面的元素前移）
+      if (fromColIndex < toColIndex) {
+        toColIndex--
+        console.log('[moveField] 同行移动，调整列索引:', toColIndex)
+      }
+      // 确保列索引不超出范围
+      toColIndex = Math.min(toColIndex, schema.value.fields[toRowIndex]?.length || 0)
+    }
+
     // 插入到新位置
     if (toRowIndex >= schema.value.fields.length) {
       // 超过最后一行，创建新行
       schema.value.fields.push([field])
+      console.log('[moveField] 超过最后一行，创建新行')
     } else {
       schema.value.fields[toRowIndex].splice(toColIndex, 0, field)
+      console.log('[moveField] 插入到目标行:', toRowIndex, toColIndex)
     }
-    
+
+    console.log('[moveField] 最终结果:', JSON.stringify(schema.value.fields.map(r => r.map(f => f.label))))
     saveToHistory()
   }
   

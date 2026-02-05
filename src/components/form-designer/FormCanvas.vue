@@ -215,11 +215,12 @@ const draggingField = ref<{
   fromColIndex: number
 } | null>(null)
 
-const dragOverRowIndex = ref<number | null>(null)
-const insertPosition = ref<{
+// 悬浮状态：记录当前悬浮在哪个元素上
+const dragOverInfo = ref<{
+  type: 'row' | 'field'
   rowIndex: number
-  colIndex: number
-  position: 'left' | 'right' | 'top' | 'bottom'
+  colIndex?: number
+  position?: 'top' | 'bottom' | 'left' | 'right'
 } | null>(null)
 
 // 获取字段样式
@@ -229,6 +230,18 @@ const getFieldStyle = (field: FormField) => {
     flex: `0 0 ${(span / 24) * 100}%`,
     maxWidth: `${(span / 24) * 100}%`
   }
+}
+
+// 重新计算行的 span
+const recalculateRowSpans = (rowIndex: number) => {
+  const row = schema.value.fields[rowIndex]
+  if (!row || row.length === 0) return
+  
+  const newCount = row.length
+  const newSpan = Math.floor(24 / newCount)
+  row.forEach((f, idx) => {
+    f.span = idx === newCount - 1 ? 24 - newSpan * (newCount - 1) : newSpan
+  })
 }
 
 // 判断字段是否正在拖拽
@@ -256,236 +269,230 @@ const handleDragStart = (event: DragEvent, item: any) => {
 const handleFieldDragStart = (event: DragEvent, field: FormField, rowIndex: number, colIndex: number) => {
   event.stopPropagation()
   draggingField.value = { field, fromRowIndex: rowIndex, fromColIndex: colIndex }
+  console.log('[拖拽开始]', field.label, 'fromRow:', rowIndex, 'fromCol:', colIndex)
   if (event.dataTransfer) {
     event.dataTransfer.effectAllowed = 'move'
-    event.dataTransfer.setData('dragSource', 'canvasField')
-    event.dataTransfer.setData('fieldId', field.id)
   }
 }
 
 // 字段拖拽结束
 const handleFieldDragEnd = () => {
+  console.log('[拖拽结束]')
   draggingField.value = null
-  dragOverRowIndex.value = null
-  insertPosition.value = null
-  formStore.setDragPreview(null)
+  dragOverInfo.value = null
 }
 
 // 全局拖拽结束处理
 const handleGlobalDragEnd = () => {
-  // 重置所有拖拽状态
+  console.log('[全局拖拽结束]')
   formStore.resetDragState()
   draggingField.value = null
-  dragOverRowIndex.value = null
-  insertPosition.value = null
+  dragOverInfo.value = null
 }
 
-// 行拖拽经过
+// 行拖拽经过 - 悬浮到行上
 const handleRowDragOver = (event: DragEvent, rowIndex: number) => {
   event.preventDefault()
-  // 从组件面板拖拽进入表单区域
-  if (formStore.isDraggingFromPanel) {
-    formStore.setDraggingOverForm(true)
-  }
-  dragOverRowIndex.value = rowIndex
+  // 记录悬浮在行上
+  dragOverInfo.value = { type: 'row', rowIndex }
+  console.log('[行悬浮] rowIndex:', rowIndex)
 }
 
 // 行拖拽离开
 const handleRowDragLeave = () => {
-  // 从组件面板拖拽离开表单区域
-  if (formStore.isDraggingFromPanel) {
-    formStore.setDraggingOverForm(false)
-  }
-  // 不立即清除 dragOverRowIndex，让子元素有机会处理
+  // 不立即清除，因为可能移动到了子元素
 }
 
 // 行放置
 const handleRowDrop = (event: DragEvent, rowIndex: number) => {
   event.preventDefault()
-  event.stopPropagation()
   
-  // 只处理从组件面板拖拽到表单区域的情况
-  if (formStore.isDraggingFromPanel && formStore.isDraggingOverForm) {
+  // 根据悬浮状态处理
+  console.log('[行放置] rowIndex:', rowIndex, 'dragOverInfo:', dragOverInfo.value)
+  
+  // 处理从组件面板拖拽新字段的情况
+  if (formStore.isDraggingFromPanel) {
     const fieldType = event.dataTransfer?.getData('fieldType')
     if (fieldType) {
       formStore.addField(fieldType as FieldType, undefined, rowIndex)
     }
   }
+  // 处理表单内字段拖拽移动的情况
+  else if (draggingField.value) {
+    const { fromRowIndex, fromColIndex } = draggingField.value
+    console.log('[行放置] 跨行移动:', fromRowIndex, '->', rowIndex)
+    
+    if (fromRowIndex !== rowIndex) {
+      formStore.moveField(fromRowIndex, fromColIndex, rowIndex, 0)
+    }
+  }
   
-  // 重置拖拽状态
+  // 重置状态
   formStore.setDraggingFromPanel(false)
   formStore.setDraggingOverForm(false)
-  dragOverRowIndex.value = null
+  draggingField.value = null
+  dragOverInfo.value = null
 }
 
-// 字段拖拽经过
+// 字段拖拽经过 - 悬浮到字段上，计算具体位置
 const handleFieldDragOver = (event: DragEvent, field: FormField, rowIndex: number, colIndex: number) => {
   event.preventDefault()
   
-  // 如果是从组件面板拖拽过来的，让事件冒泡到行元素处理
-  if (formStore.isDraggingFromPanel) {
-    return
-  }
+  // 如果是自己拖自己，跳过
+  if (draggingField.value?.field.id === field.id) return
   
-  if (!draggingField.value) return
-  
-  // 计算拖拽位置
-  const position = calculateInsertPosition(event, field)
-  insertPosition.value = { rowIndex, colIndex, position }
-  formStore.setDragPreview({ rowIndex, colIndex, position })
-}
-
-// 计算插入位置
-const calculateInsertPosition = (event: DragEvent, field: FormField): 'left' | 'right' | 'top' | 'bottom' => {
+  // 计算相对于字段的位置
   const rect = (event.target as HTMLElement).getBoundingClientRect()
   const x = event.clientX - rect.left
   const y = event.clientY - rect.top
   const width = rect.width
   const height = rect.height
   
-  // 计算中心点
   const centerX = width / 2
   const centerY = height / 2
   
-  // 判断位置
-  const isTop = y < centerY * 0.5
-  const isBottom = y > centerY * 1.5
-  const isLeft = x < centerX * 0.5
-  const isRight = x > centerX * 1.5
+  let position: 'top' | 'bottom' | 'left' | 'right' = 'right'
   
-  if (isTop) return 'top'
-  if (isBottom) return 'bottom'
-  if (isLeft) return 'left'
-  if (isRight) return 'right'
-  return 'right'
+  if (y < centerY * 0.5) {
+    position = 'top'
+  } else if (y > centerY * 1.5) {
+    position = 'bottom'
+  } else if (x < centerX * 0.5) {
+    position = 'left'
+  } else {
+    position = 'right'
+  }
+  
+  // 记录悬浮在字段上
+  dragOverInfo.value = { type: 'field', rowIndex, colIndex, position }
+  console.log('[字段悬浮]', field.label, 'pos:', position)
 }
 
 // 字段拖拽离开
 const handleFieldDragLeave = () => {
-  // 不立即清除，让插入指示器处理
+  // 不立即清除
 }
 
 // 字段放置
 const handleFieldDrop = (event: DragEvent, field: FormField, rowIndex: number, colIndex: number) => {
   event.preventDefault()
   
-  // 如果是从组件面板拖拽过来的，不处理，让行元素处理
-  if (formStore.isDraggingFromPanel) {
-    return
-  }
+  console.log('[字段放置] field:', field.label, 'dragOverInfo:', dragOverInfo.value)
   
-  event.stopPropagation()
+  // 如果是从组件面板拖拽过来的，不处理
+  if (formStore.isDraggingFromPanel) return
   
   if (!draggingField.value) return
   
-  const { field: draggedField, fromRowIndex, fromColIndex } = draggingField.value
+  // 检查是否是自己拖自己
+  if (draggingField.value.field.id === field.id) return
   
-  // 计算目标位置
-  const rect = (event.target as HTMLElement).getBoundingClientRect()
-  const x = event.clientX - rect.left
-  const y = event.clientY - rect.top
-  const width = rect.width
-  const height = rect.height
+  const { fromRowIndex, fromColIndex } = draggingField.value
   
-  const centerX = width / 2
-  const centerY = height / 2
-  
+  // 根据悬浮状态计算目标位置
   let targetRowIndex = rowIndex
   let targetColIndex = colIndex
   
-  // 判断放置方向
-  if (y < centerY * 0.5) {
-    // 顶部 - 插入到上一行末尾或当前行当前位置
-    targetRowIndex = rowIndex
-    targetColIndex = colIndex
-  } else if (y > centerY * 1.5) {
-    // 底部 - 插入到当前行末尾
-    targetRowIndex = rowIndex
-    targetColIndex = colIndex + 1
-  } else if (x < centerX * 0.5) {
-    // 左侧
-    targetRowIndex = rowIndex
-    targetColIndex = colIndex
-  } else {
-    // 右侧
-    targetRowIndex = rowIndex
-    targetColIndex = colIndex + 1
-  }
-  
-  // 移动字段
-  if (fromRowIndex === targetRowIndex) {
-    // 同一行内移动
-    if (fromColIndex < targetColIndex) {
-      targetColIndex-- // 移除元素后索引会偏移
+  const info = dragOverInfo.value
+  if (info?.type === 'field' && info.position) {
+    switch (info.position) {
+      case 'top':
+        // 插入到上一行末尾
+        if (rowIndex > 0) {
+          targetRowIndex = rowIndex - 1
+          targetColIndex = schema.value.fields[targetRowIndex].length
+        }
+        break
+      case 'bottom':
+        // 插入到当前行末尾
+        targetRowIndex = rowIndex
+        targetColIndex = schema.value.fields[rowIndex].length
+        break
+      case 'left':
+        // 插入到当前字段前面
+        targetRowIndex = rowIndex
+        targetColIndex = colIndex
+        break
+      case 'right':
+        // 插入到当前字段后面
+        targetRowIndex = rowIndex
+        targetColIndex = colIndex + 1
+        break
     }
-    formStore.moveField(fromRowIndex, fromColIndex, targetRowIndex, targetColIndex)
-  } else {
-    // 跨行移动
-    formStore.moveField(fromRowIndex, fromColIndex, targetRowIndex, targetColIndex)
   }
   
+  console.log('[字段放置] 移动:', fromRowIndex, fromColIndex, '->', targetRowIndex, targetColIndex)
+  
+  // 执行移动
+  formStore.moveField(fromRowIndex, fromColIndex, targetRowIndex, targetColIndex)
+  
+  // 重置状态
   draggingField.value = null
-  insertPosition.value = null
-  formStore.setDragPreview(null)
+  dragOverInfo.value = null
 }
 
 // 显示插入指示器
 const showInsertIndicator = (rowIndex: number, colIndex: number, position?: string) => {
-  if (!insertPosition.value) return false
-  if (insertPosition.value.rowIndex !== rowIndex) return false
+  const info = dragOverInfo.value
+  if (!info || info.type !== 'field') return false
+  if (info.rowIndex !== rowIndex) return false
   
   if (position) {
-    return insertPosition.value.colIndex === colIndex && insertPosition.value.position === position
+    return info.colIndex === colIndex && info.position === position
   }
-  return insertPosition.value.colIndex === colIndex
+  return info.colIndex === colIndex
 }
 
 // 插入指示器拖拽经过
 const handleInsertDragOver = (rowIndex: number, colIndex: number, position: 'left' | 'right' | 'top' | 'bottom') => {
-  insertPosition.value = { rowIndex, colIndex, position }
+  dragOverInfo.value = { type: 'field', rowIndex, colIndex, position }
 }
 
 // 插入指示器拖拽离开
 const handleInsertDragLeave = () => {
-  // 延迟清除，让用户有时间放置
+  // 延迟清除
 }
 
 // 插入指示器放置
 const handleInsertDrop = (rowIndex: number, colIndex: number) => {
   if (!draggingField.value) return
   
-  const { field, fromRowIndex, fromColIndex } = draggingField.value
+  const { fromRowIndex, fromColIndex } = draggingField.value
+  
+  console.log('[插入指示器放置]', fromRowIndex, fromColIndex, '->', rowIndex, colIndex)
   
   // 移动字段
   formStore.moveField(fromRowIndex, fromColIndex, rowIndex, colIndex)
   
   draggingField.value = null
-  insertPosition.value = null
-  formStore.setDragPreview(null)
+  dragOverInfo.value = null
 }
 
 // 显示插入行指示器
 const showInsertRowIndicator = computed(() => {
-  return dragOverRowIndex.value !== null && fieldRows.value.length > 0
+  return dragOverInfo.value?.type === 'row' && fieldRows.value.length > 0
 })
 
 // 插入行拖拽经过
 const handleInsertRowDragOver = () => {
-  // 可以添加视觉反馈
+  // 记录悬浮在新行位置
+  dragOverInfo.value = { type: 'row', rowIndex: fieldRows.value.length }
 }
 
 // 插入行放置
 const handleInsertRowDrop = () => {
   if (!draggingField.value) return
   
-  const { field, fromRowIndex, fromColIndex } = draggingField.value
+  const { fromRowIndex, fromColIndex } = draggingField.value
+  const targetRowIndex = fieldRows.value.length
   
-  // 移动到新行（当前行数）
-  formStore.moveField(fromRowIndex, fromColIndex, fieldRows.value.length, 0)
+  console.log('[新行放置]', fromRowIndex, fromColIndex, '->', targetRowIndex, 0)
+  
+  // 移动到新行
+  formStore.moveField(fromRowIndex, fromColIndex, targetRowIndex, 0)
   
   draggingField.value = null
-  dragOverRowIndex.value = null
-  formStore.setDragPreview(null)
+  dragOverInfo.value = null
 }
 
 // 拖拽经过
@@ -494,11 +501,12 @@ const handleDragOver = (event: DragEvent) => {
   if (event.dataTransfer) {
     event.dataTransfer.dropEffect = 'copy'
   }
+  console.log('[canvas-content dragover]')
 }
 
 // 拖拽离开
 const handleDragLeave = () => {
-  // 可以添加视觉反馈
+  console.log('[canvas-content dragleave]')
 }
 
 // 放置处理
@@ -508,8 +516,21 @@ const handleDrop = (event: DragEvent) => {
   const fieldType = event.dataTransfer?.getData('fieldType')
   const dragSource = event.dataTransfer?.getData('dragSource')
   
+  console.log('[canvas-content drop] fieldType:', fieldType, 'dragSource:', dragSource, 'hasDraggingField:', !!draggingField.value)
+  
+  // 处理从组件面板拖拽新字段的情况
   if (dragSource === 'componentPanel' && fieldType) {
     formStore.addField(fieldType as FieldType)
+  }
+  // 处理表单内字段拖拽到空白区域（没有在任何行上释放）
+  else if (draggingField.value) {
+    const { fromRowIndex, fromColIndex } = draggingField.value
+    // 默认放到最后一行末尾
+    const targetRowIndex = fieldRows.value.length
+    console.log('[canvas-content drop] 拖拽到空白:', fromRowIndex, '->', targetRowIndex)
+    if (fromRowIndex !== targetRowIndex) {
+      formStore.moveField(fromRowIndex, fromColIndex, targetRowIndex, 0)
+    }
   }
   
   emit('drop', event)
@@ -554,15 +575,40 @@ const handleClear = () => {
   }).catch(() => {})
 }
 
+// 全局拖拽放置处理（后备方案）
+const handleGlobalDrop = (event: DragEvent) => {
+  console.log('[全局drop]')
+  
+  if (!draggingField.value) return
+  
+  // 检查是否在画布区域内
+  const canvasContent = document.querySelector('.canvas-content')
+  if (!canvasContent?.contains(event.target as Node)) return
+  
+  const { fromRowIndex, fromColIndex } = draggingField.value
+  const targetRowIndex = fieldRows.value.length
+  
+  console.log('[全局drop] 移动:', fromRowIndex, '->', targetRowIndex)
+  
+  formStore.moveField(fromRowIndex, fromColIndex, targetRowIndex, 0)
+  
+  draggingField.value = null
+  dragOverInfo.value = null
+}
+
 // 组件挂载
 onMounted(() => {
   // 添加全局拖拽结束监听，处理拖拽到窗口外的情况
   document.addEventListener('dragend', handleGlobalDragEnd)
+  // 添加全局 drop 监听器作为后备
+  document.addEventListener('drop', handleGlobalDrop)
 })
 
 onUnmounted(() => {
   // 移除全局拖拽结束监听
   document.removeEventListener('dragend', handleGlobalDragEnd)
+  // 移除全局 drop 监听器
+  document.removeEventListener('drop', handleGlobalDrop)
   // 同时重置所有拖拽状态
   formStore.resetDragState()
 })
