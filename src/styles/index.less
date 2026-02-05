@@ -1,0 +1,153 @@
+// 全局样式
+@import './variables.less';
+
+// 重置样式
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+html, body {
+  height: 100%;
+  font-family: @font-family;
+  font-size: @font-size-base;
+  color: @text-regular;
+  background-color: @background-color-base;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+#app {
+  height: 100%;
+}
+
+// 滚动条样式
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: @background-color-light;
+}
+
+::-webkit-scrollbar-thumb {
+  background: @border-color-base;
+  border-radius: 4px;
+  
+  &:hover {
+    background: @text-secondary;
+  }
+}
+
+// 通用工具类
+.text-center {
+  text-align: center;
+}
+
+.text-left {
+  text-align: left;
+}
+
+.text-right {
+  text-align: right;
+}
+
+.clearfix {
+  &::after {
+    content: '';
+    display: block;
+    height: 0;
+    clear: both;
+    visibility: hidden;
+  }
+}
+
+.ellipsis {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+// 动画类
+.fade-enter-active,
+.fade-leave-active {
+  transition: opacity @transition-duration;
+}
+
+.fade-enter-from,
+.fade-leave-to {
+  opacity: 0;
+}
+
+.slide-fade-enter-active {
+  transition: all @transition-duration ease-out;
+}
+
+.slide-fade-leave-active {
+  transition: all @transition-duration cubic-bezier(1, 0.5, 0.8, 1);
+}
+
+.slide-fade-enter-from,
+.slide-fade-leave-to {
+  transform: translateX(20px);
+  opacity: 0;
+}
+
+// 拖拽相关样式
+.draggable-ghost {
+  opacity: 0.5;
+  background: @primary-color;
+}
+
+.draggable-chosen {
+  box-shadow: @box-shadow-base;
+}
+
+.draggable-drag {
+  opacity: 0.8;
+}
+
+// 表单相关样式
+.form-item-required {
+  &::before {
+    content: '*';
+    color: @danger-color;
+    margin-right: 4px;
+  }
+}
+
+// Element Plus 覆盖样式
+.el-card {
+  border: none;
+  box-shadow: @box-shadow-light;
+}
+
+.el-button--primary {
+  background-color: @primary-color;
+  border-color: @primary-color;
+  
+  &:hover, &:focus {
+    background-color: lighten(@primary-color, 10%);
+    border-color: lighten(@primary-color, 10%);
+  }
+}
+
+.el-input__inner:focus,
+.el-textarea__inner:focus {
+  border-color: @primary-color;
+}
+
+// 响应式工具类
+.hide-on-mobile {
+  @media screen and (max-width: 768px) {
+    display: none !important;
+  }
+}
+
+.show-on-mobile {
+  @media screen and (min-width: 769px) {
+    display: none !important;
+  }
+}

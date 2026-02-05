@@ -1,0 +1,35 @@
+{
+  "name": "low-form",
+  "version": "1.0.0",
+  "description": "低代码表单生成器 - Vue3 + TypeScript",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vue-tsc && vite build",
+    "preview": "vite preview",
+    "lint": "eslint . --ext .vue,.js,.jsx,.cjs,.mjs,.ts,.tsx,.cts,.mts --fix",
+    "format": "prettier --write src/"
+  },
+  "dependencies": {
+    "vue": "^3.5.13",
+    "vue-router": "^4.5.0",
+    "pinia": "^2.3.0",
+    "element-plus": "^2.8.8",
+    "@element-plus/icons-vue": "^2.3.1",
+    "vuedraggable": "^4.1.0",
+    "sortablejs": "^1.15.6",
+    "less": "^4.2.1",
+    "dayjs": "^1.11.13"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.2",
+    "@types/sortablejs": "^1.15.8",
+    "@vitejs/plugin-vue": "^5.2.1",
+    "@vue/tsconfig": "^0.7.0",
+    "typescript": "^5.7.2",
+    "vite": "^6.0.6",
+    "vue-tsc": "^2.1.10",
+    "unplugin-auto-import": "^19.0.0",
+    "unplugin-vue-components": "^28.0.0"
+  }
+}

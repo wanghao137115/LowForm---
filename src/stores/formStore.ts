@@ -1,0 +1,536 @@
+// 表单设计器Store
+import { defineStore } from 'pinia'
+import { ref, computed } from 'vue'
+import { generateId, getDefaultProps } from '@/utils/drag'
+import type { 
+  FormField, 
+  FormSchema, 
+  FieldType,
+  ComponentPanelItem 
+} from '@/types/form'
+
+export const useFormStore = defineStore('form', () => {
+  // ========== 状态 ==========
+  
+  // 表单schema - 使用二维数组结构
+  const schema = ref<FormSchema>({
+    id: generateId(),
+    name: '未命名表单',
+    description: '',
+    fields: [],  // 二维数组：fields[rowIndex][colIndex]
+    layout: 'vertical',
+    labelWidth: 100,
+    labelPosition: 'top',
+    gutter: 16
+  })
+  
+  // 选中的字段ID
+  const selectedFieldId = ref<string | null>(null)
+  
+  // 拖拽状态
+  const isDragging = ref(false)
+  const draggedItem = ref<ComponentPanelItem | null>(null)
+  
+  // 从组件面板拖拽的状态
+  const isDraggingFromPanel = ref(false)
+  const isDraggingOverForm = ref(false)
+  
+  // 拖拽预览状态
+  const dragPreview = ref<{
+    rowIndex: number
+    colIndex: number
+    position: 'left' | 'right' | 'top' | 'bottom' | null
+  } | null>(null)
+  
+  // 历史记录（用于撤销/重做）
+  const historyStack = ref<FormSchema[]>([])
+  const historyIndex = ref(-1)
+  
+  // ========== 计算属性 ==========
+  
+  // 所有字段（扁平化，用于兼容旧代码）
+  const flatFields = computed(() => {
+    return schema.value.fields.flat()
+  })
+  
+  // 行数
+  const rowCount = computed(() => schema.value.fields.length)
+  
+  // 选中的字段
+  const selectedField = computed(() => {
+    if (!selectedFieldId.value) return null
+    for (const row of schema.value.fields) {
+      const field = row.find(f => f.id === selectedFieldId.value)
+      if (field) return field
+    }
+    return null
+  })
+  
+  // 是否可以撤销
+  const canUndo = computed(() => historyIndex.value > 0)
+  
+  // 是否可以重做
+  const canRedo = computed(() => historyIndex.value < historyStack.value.length - 1)
+  
+  // ========== 方法 ==========
+  
+  /**
+   * 添加字段到指定行
+   */
+  const addField = (type: FieldType, options?: Partial<FormField>, targetRowIndex?: number): FormField => {
+    const name = generateFieldName(type)
+    const defaultProps = getDefaultProps(type)
+    
+    const field: FormField = {
+      id: generateId(),
+      type,
+      name,
+      label: getDefaultLabel(type),
+      placeholder: `请${type === 'select' ? '选择' : '输入'}${getDefaultLabel(type)}`,
+      required: false,
+      disabled: false,
+      hidden: false,
+      span: 6,  // 默认占6格（4个占满一行）
+      ...defaultProps,
+      ...options
+    } as FormField
+    
+    // 如果是选择类组件，添加默认选项
+    if (['select', 'radio', 'checkbox'].includes(type)) {
+      (field as any).options = [
+        { label: '选项一', value: '1' },
+        { label: '选项二', value: '2' }
+      ]
+    }
+    
+
+    // 如果指定了行号且该行存在
+    if (targetRowIndex !== undefined && targetRowIndex >= 0 && targetRowIndex < schema.value.fields.length) {
+      const targetRow = schema.value.fields[targetRowIndex]
+      // 检查该行是否为空
+      const isEmptyRow = targetRow.length === 0
+      
+      if (isEmptyRow) {
+        // 空行，新字段占满
+        field.span = 24
+        schema.value.fields[targetRowIndex].push(field)
+      } else {
+        // 非空行，添加到末尾后重新计算所有元素的 span
+
+        targetRow.push(field)
+        const newCount = targetRow.length
+        const newSpan = Math.floor(24 / newCount)
+        // 重新分配 span，最后一个元素填充剩余空间
+        targetRow.forEach((f, idx) => {
+          f.span = idx === newCount - 1 ? 24 - newSpan * (newCount - 1) : newSpan
+        })
+      }
+      
+      saveToHistory()
+      selectedFieldId.value = field.id
+      return field
+    }
+    
+    // 默认添加到新行或第一行
+    if (schema.value.fields.length === 0) {
+      field.span = 24  // 空表单，第一个字段占满
+      schema.value.fields.push([field])
+    } else {
+      // 尝试添加到第一行，如果满了就创建新行
+      const firstRow = schema.value.fields[0]
+      const firstRowSpan = firstRow.reduce((sum, f) => sum + (f.span || 6), 0)
+      if (firstRowSpan + (field.span || 6) <= 24) {
+        firstRow.push(field)
+        // 重新计算该行所有元素的 span
+        const newCount = firstRow.length
+        const newSpan = Math.floor(24 / newCount)
+        firstRow.forEach((f, idx) => {
+          f.span = idx === newCount - 1 ? 24 - newSpan * (newCount - 1) : newSpan
+        })
+      } else {
+        schema.value.fields.push([field])
+      }
+    }
+    
+    saveToHistory()
+    selectedFieldId.value = field.id
+    
+    return field
+  }
+  
+  /**
+   * 更新字段
+   */
+  const updateField = (field: FormField): void => {
+    for (const row of schema.value.fields) {
+      const index = row.findIndex(f => f.id === field.id)
+      if (index !== -1) {
+        row[index] = field
+        saveToHistory()
+        return
+      }
+    }
+  }
+  
+  /**
+   * 删除字段
+   */
+  const deleteField = (fieldId: string): void => {
+    for (let rowIndex = 0; rowIndex < schema.value.fields.length; rowIndex++) {
+      const row = schema.value.fields[rowIndex]
+      const index = row.findIndex(f => f.id === fieldId)
+      if (index !== -1) {
+        row.splice(index, 1)
+        
+        // 如果该行空了，删除该行
+        if (row.length === 0) {
+          schema.value.fields.splice(rowIndex, 1)
+        }
+        
+        // 如果删除的是当前选中的字段，清除选择
+        if (selectedFieldId.value === fieldId) {
+          selectedFieldId.value = null
+        }
+        
+        saveToHistory()
+        return
+      }
+    }
+  }
+  
+  /**
+   * 移动字段
+   */
+  const moveField = (
+    fromRowIndex: number,
+    fromColIndex: number,
+    toRowIndex: number,
+    toColIndex: number
+  ): void => {
+    const field = schema.value.fields[fromRowIndex]?.[fromColIndex]
+    if (!field) return
+    
+    // 移除原位置的字段
+    schema.value.fields[fromRowIndex].splice(fromColIndex, 1)
+    
+    // 如果原行为空，删除该行
+    if (schema.value.fields[fromRowIndex].length === 0) {
+      schema.value.fields.splice(fromRowIndex, 1)
+      // 调整目标行索引
+      if (toRowIndex > fromRowIndex) {
+        toRowIndex--
+      }
+    }
+    
+    // 插入到新位置
+    if (toRowIndex >= schema.value.fields.length) {
+      // 超过最后一行，创建新行
+      schema.value.fields.push([field])
+    } else {
+      schema.value.fields[toRowIndex].splice(toColIndex, 0, field)
+    }
+    
+    saveToHistory()
+  }
+  
+  /**
+   * 复制字段
+   */
+  const duplicateField = (fieldId: string): FormField | null => {
+    for (let rowIndex = 0; rowIndex < schema.value.fields.length; rowIndex++) {
+      const row = schema.value.fields[rowIndex]
+      const colIndex = row.findIndex(f => f.id === fieldId)
+      if (colIndex !== -1) {
+        const field = row[colIndex]
+        const newField = JSON.parse(JSON.stringify(field))
+        newField.id = generateId()
+        newField.name = generateFieldName(field.type)
+        newField.label = field.label + ' (副本)'
+        
+        // 插入到原位置后面
+        row.splice(colIndex + 1, 0, newField)
+        
+        saveToHistory()
+        selectedFieldId.value = newField.id
+        
+        return newField
+      }
+    }
+    return null
+  }
+  
+  /**
+   * 上移字段
+   */
+  const moveFieldUp = (fieldId: string): void => {
+    for (let rowIndex = 0; rowIndex < schema.value.fields.length; rowIndex++) {
+      const row = schema.value.fields[rowIndex]
+      const colIndex = row.findIndex(f => f.id === fieldId)
+      if (colIndex !== -1 && rowIndex > 0) {
+        // 移动到上一行末尾
+        const field = row.splice(colIndex, 1)[0]
+        schema.value.fields[rowIndex - 1].push(field)
+        
+        // 如果当前行为空，删除该行
+        if (row.length === 0) {
+          schema.value.fields.splice(rowIndex, 1)
+        }
+        
+        saveToHistory()
+        return
+      }
+    }
+  }
+  
+  /**
+   * 下移字段
+   */
+  const moveFieldDown = (fieldId: string): void => {
+    for (let rowIndex = 0; rowIndex < schema.value.fields.length; rowIndex++) {
+      const row = schema.value.fields[rowIndex]
+      const colIndex = row.findIndex(f => f.id === fieldId)
+      if (colIndex !== -1 && rowIndex < schema.value.fields.length - 1) {
+        // 移动到下一行开头
+        const field = row.splice(colIndex, 1)[0]
+        schema.value.fields[rowIndex + 1].unshift(field)
+        
+        // 如果当前行为空，删除该行
+        if (row.length === 0) {
+          schema.value.fields.splice(rowIndex, 1)
+        }
+        
+        saveToHistory()
+        return
+      }
+    }
+  }
+  
+  /**
+   * 设置拖拽预览
+   */
+  const setDragPreview = (preview: { rowIndex: number; colIndex: number; position: 'left' | 'right' | 'top' | 'bottom' | null } | null): void => {
+    dragPreview.value = preview
+  }
+  
+  /**
+   * 设置从组件面板拖拽的状态
+   */
+  const setDraggingFromPanel = (value: boolean): void => {
+    isDraggingFromPanel.value = value
+    // 如果结束拖拽，同时重置表单区域状态
+    if (!value) {
+      isDraggingOverForm.value = false
+    }
+  }
+  
+  /**
+   * 设置是否拖拽到表单区域
+   */
+  const setDraggingOverForm = (value: boolean): void => {
+    isDraggingOverForm.value = value
+  }
+  
+  /**
+   * 重置所有拖拽状态
+   */
+  const resetDragState = (): void => {
+    isDragging.value = false
+    draggedItem.value = null
+    isDraggingFromPanel.value = false
+    isDraggingOverForm.value = false
+    dragPreview.value = null
+  }
+  
+  /**
+   * 更新Schema基本信息
+   */
+  const updateSchemaInfo = (info: Partial<FormSchema>): void => {
+    Object.assign(schema.value, info)
+    saveToHistory()
+  }
+  
+  /**
+   * 加载Schema
+   */
+  const loadSchema = (newSchema: FormSchema): void => {
+    // 兼容旧版本的扁平数组
+    let fields = newSchema.fields
+    if (Array.isArray(fields) && fields.length > 0 && !Array.isArray(fields[0])) {
+      // 旧版本是扁平数组，转成二维数组
+      fields = [fields as unknown as FormField[]] as unknown as FormField[][]
+    }
+    // 使用类型断言
+    ;(newSchema as any).fields = fields
+    
+    schema.value = JSON.parse(JSON.stringify(newSchema))
+    selectedFieldId.value = null
+    historyStack.value = []
+    historyIndex.value = -1
+    saveToHistory()
+  }
+  
+  /**
+   * 清空表单
+   */
+  const clearForm = (): void => {
+    schema.value = {
+      id: generateId(),
+      name: '未命名表单',
+      description: '',
+      fields: [],
+      layout: 'vertical',
+      labelWidth: 100,
+      labelPosition: 'top',
+      gutter: 16
+    }
+    selectedFieldId.value = null
+    historyStack.value = []
+    historyIndex.value = -1
+    saveToHistory()
+  }
+  
+  /**
+   * 撤销
+   */
+  const undo = (): void => {
+    if (canUndo.value) {
+      historyIndex.value--
+      schema.value = JSON.parse(JSON.stringify(historyStack.value[historyIndex.value]))
+      selectedFieldId.value = null
+    }
+  }
+  
+  /**
+   * 重做
+   */
+  const redo = (): void => {
+    if (canRedo.value) {
+      historyIndex.value++
+      schema.value = JSON.parse(JSON.stringify(historyStack.value[historyIndex.value]))
+      selectedFieldId.value = null
+    }
+  }
+  
+  // ========== 私有方法 ==========
+  
+  /**
+   * 生成字段名称
+   */
+  const generateFieldName = (type: FieldType): string => {
+    const prefixMap: Record<FieldType, string> = {
+      input: 'input',
+      textarea: 'textarea',
+      number: 'number',
+      select: 'select',
+      radio: 'radio',
+      checkbox: 'checkbox',
+      switch: 'switch',
+      date: 'date',
+      time: 'time',
+      datetime: 'datetime',
+      cascader: 'cascader',
+      upload: 'upload',
+      rate: 'rate',
+      slider: 'slider',
+      color: 'color',
+      'tree-select': 'treeSelect',
+      divider: 'divider',
+      card: 'card',
+      collapse: 'collapse'
+    }
+    
+    const prefix = prefixMap[type] || 'field'
+    const count = flatFields.value.filter(f => f.type === type).length
+    return `${prefix}${count + 1}`
+  }
+  
+  /**
+   * 获取默认标签
+   */
+  const getDefaultLabel = (type: FieldType): string => {
+    const labelMap: Record<FieldType, string> = {
+      input: '输入框',
+      textarea: '文本域',
+      number: '数字输入',
+      select: '下拉选择',
+      radio: '单选框',
+      checkbox: '复选框',
+      switch: '开关',
+      date: '日期选择',
+      time: '时间选择',
+      datetime: '日期时间',
+      cascader: '级联选择',
+      upload: '上传组件',
+      rate: '评分',
+      slider: '滑块',
+      color: '颜色选择',
+      'tree-select': '树选择',
+      divider: '分割线',
+      card: '卡片',
+      collapse: '折叠面板'
+    }
+    
+    return labelMap[type] || '字段'
+  }
+  
+  /**
+   * 保存到历史记录
+   */
+  const saveToHistory = (): void => {
+    // 移除当前位置之后的历史
+    historyStack.value = historyStack.value.slice(0, historyIndex.value + 1)
+    
+    // 添加当前状态
+    historyStack.value.push(JSON.parse(JSON.stringify(schema.value)))
+    historyIndex.value = historyStack.value.length - 1
+    
+    // 限制历史记录数量
+    if (historyStack.value.length > 50) {
+      historyStack.value.shift()
+      historyIndex.value--
+    }
+  }
+  
+  return {
+    // 状态
+    schema,
+    selectedFieldId,
+    isDragging,
+    draggedItem,
+    dragPreview,
+    historyStack,
+    historyIndex,
+    isDraggingFromPanel,
+    isDraggingOverForm,
+    
+    // 计算属性
+    flatFields,
+    rowCount,
+    selectedField,
+    canUndo,
+    canRedo,
+    
+    // 方法
+    addField,
+    updateField,
+    deleteField,
+    moveField,
+    duplicateField,
+    moveFieldUp,
+    moveFieldDown,
+    setDragPreview,
+    setDraggingFromPanel,
+    setDraggingOverForm,
+    resetDragState,
+    updateSchemaInfo,
+    loadSchema,
+    clearForm,
+    undo,
+    redo,
+    selectField: (id: string | null) => { selectedFieldId.value = id },
+    updateFields: (fields: FormField[][]) => {
+      schema.value.fields = fields
+      saveToHistory()
+    }
+  }
+})
