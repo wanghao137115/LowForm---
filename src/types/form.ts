@@ -27,6 +27,7 @@ export interface BaseField {
   label: string
   name: string
   placeholder?: string
+  defaultValue?: string | number | boolean | string[] | number[]
   required?: boolean
   disabled?: boolean
   hidden?: boolean

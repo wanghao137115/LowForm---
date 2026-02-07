@@ -2,16 +2,16 @@
 <template>
   <div class="options-editor">
     <div class="options-header">
-      <span class="options-count">{{ localOptions.length }} 个选项</span>
+      <span class="options-count">{{ modelValue.length }} 个选项</span>
       <el-button size="small" type="primary" @click="handleAdd">
         <el-icon><Plus /></el-icon>
         添加选项
       </el-button>
     </div>
-    
+
     <div class="options-list">
-      <div 
-        v-for="(option, index) in localOptions" 
+      <div
+        v-for="(option, index) in modelValue"
         :key="index"
         class="option-item"
       >
@@ -28,15 +28,15 @@
           class="option-value"
           @change="handleChange"
         />
-        <el-checkbox 
-          v-model="option.disabled" 
+        <el-checkbox
+          v-model="option.disabled"
           size="small"
           title="禁用"
           @change="handleChange"
         />
-        <el-button 
-          size="small" 
-          type="danger" 
+        <el-button
+          size="small"
+          type="danger"
           circle
           @click="handleDelete(index)"
         >
@@ -44,15 +44,15 @@
         </el-button>
       </div>
     </div>
-    
-    <div v-if="localOptions.length === 0" class="empty-tip">
+
+    <div v-if="modelValue.length === 0" class="empty-tip">
       <el-empty description="暂无选项" :image-size="60" />
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, watch } from 'vue'
+import { ref, watch, computed } from 'vue'
 import { Plus, Delete } from '@element-plus/icons-vue'
 import type { OptionItem } from '@/types/form'
 
@@ -67,35 +67,31 @@ const emit = defineEmits<{
   (e: 'change', options: OptionItem[]): void
 }>()
 
-// 本地选项数据
-const localOptions = ref<OptionItem[]>([...props.modelValue])
-
-// 监听props变化
-watch(() => props.modelValue, (newOptions) => {
-  localOptions.value = [...newOptions]
-}, { deep: true })
-
+// 直接使用 props.modelValue，不创建本地副本
 // 添加选项
 const handleAdd = () => {
-  const value = String(localOptions.value.length + 1)
-  localOptions.value.push({
+  const value = String(props.modelValue.length + 1)
+  const newOption: OptionItem = {
     label: `选项${value}`,
     value: value,
     disabled: false
-  })
-  handleChange()
+  }
+  const newOptions = [...props.modelValue, newOption]
+  emit('update:modelValue', newOptions)
+  emit('change', newOptions)
 }
 
 // 删除选项
 const handleDelete = (index: number) => {
-  localOptions.value.splice(index, 1)
-  handleChange()
+  const newOptions = props.modelValue.filter((_, i) => i !== index)
+  emit('update:modelValue', newOptions)
+  emit('change', newOptions)
 }
 
-// 选项变化
+// 选项变化 - 当直接修改选项属性时触发
 const handleChange = () => {
-  emit('update:modelValue', localOptions.value)
-  emit('change', localOptions.value)
+  emit('update:modelValue', props.modelValue)
+  emit('change', props.modelValue)
 }
 </script>
 

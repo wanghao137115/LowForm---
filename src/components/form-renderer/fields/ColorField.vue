@@ -2,7 +2,7 @@
 <template>
   <div class="field-color">
     <el-color-picker
-      :model-value="fieldValue"
+      :model-value="mode === 'design' ? field.defaultValue : fieldValue"
       :disabled="mode === 'design' || field.disabled"
       :show-alpha="field.showAlpha"
       :color-format="field.colorFormat"

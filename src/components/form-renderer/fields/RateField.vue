@@ -2,7 +2,7 @@
 <template>
   <div class="field-rate">
     <el-rate
-      :model-value="fieldValue"
+      :model-value="mode === 'design' ? field.defaultValue : fieldValue"
       :disabled="mode === 'design' || field.disabled"
       :max="field.max"
       :allow-half="field.allowHalf"

@@ -2,7 +2,7 @@
 <template>
   <div class="field-switch">
     <el-switch
-      :model-value="fieldValue"
+      :model-value="mode === 'design' ? field.defaultValue : fieldValue"
       :disabled="mode === 'design' || field.disabled"
       :active-text="field.activeText"
       :inactive-text="field.inactiveText"

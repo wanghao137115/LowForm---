@@ -2,7 +2,7 @@
 <template>
   <div class="field-time">
     <el-time-picker
-      :model-value="fieldValue"
+      :model-value="mode === 'design' ? field.defaultValue : fieldValue"
       :disabled="mode === 'design' || field.disabled"
       :placeholder="field.placeholder"
       :format="field.format"

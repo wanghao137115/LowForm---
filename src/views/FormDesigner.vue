@@ -78,10 +78,9 @@
 
       <!-- 右侧属性面板 -->
       <div class="property-panel" :style="{ width: panelWidth.right + 'px' }">
-        <PropertyPanel 
+        <PropertyPanel
           v-if="formStore.selectedField"
-          :field="formStore.selectedField"
-          @update="handleUpdateField"
+          :fieldId="formStore.selectedField.id"
         />
         <div v-else class="no-selection">
           <el-empty description="请选择一个组件">
@@ -194,11 +193,6 @@ const handleSelectField = (field: FormField | null) => {
 // 更新字段列表
 const handleUpdateFields = (fields: FormField[][]) => {
   formStore.updateFields(fields)
-}
-
-// 更新单个字段
-const handleUpdateField = (field: FormField) => {
-  formStore.updateField(field)
 }
 
 // 删除字段

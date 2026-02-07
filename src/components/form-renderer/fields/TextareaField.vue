@@ -2,7 +2,7 @@
 <template>
   <div class="field-textarea">
     <el-input
-      :model-value="mode === 'design' ? field.placeholder : fieldValue"
+      :model-value="mode === 'design' ? field.defaultValue || field.placeholder : fieldValue"
       :disabled="mode === 'design' || field.disabled"
       :placeholder="field.placeholder"
       :rows="field.rows"

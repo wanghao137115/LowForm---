@@ -2,7 +2,7 @@
 <template>
   <div class="field-checkbox">
     <el-checkbox-group
-      :model-value="fieldValue"
+      :model-value="mode === 'design' ? field.defaultValue : fieldValue"
       :disabled="mode === 'design' || field.disabled"
       @update:model-value="handleChange"
     >

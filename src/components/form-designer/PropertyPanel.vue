@@ -15,64 +15,106 @@
             基础属性
           </div>
           
-          <el-form label-position="top" size="small" :model="localField">
+          <el-form label-position="top" size="small" :model="currentField">
             <!-- 标签 -->
             <el-form-item label="标签">
-              <el-input 
-                v-model="localField.label" 
+              <el-input
+                v-model="currentField.label"
                 placeholder="请输入标签"
                 @change="handleFieldChange"
               />
             </el-form-item>
-            
+
             <!-- 字段名 -->
             <el-form-item label="字段名">
-              <el-input 
-                v-model="localField.name" 
+              <el-input
+                v-model="currentField.name"
                 placeholder="请输入字段名"
                 @change="handleFieldChange"
               />
             </el-form-item>
-            
+
             <!-- 占位符 -->
             <el-form-item label="占位符" v-if="showPlaceholder">
-              <el-input 
-                v-model="localField.placeholder" 
+              <el-input
+                v-model="currentField.placeholder"
                 placeholder="请输入占位符"
                 @change="handleFieldChange"
               />
             </el-form-item>
-            
+
+            <!-- 默认值 -->
+            <el-form-item label="默认值" v-if="showDefaultValue">
+              <!-- 文本输入 -->
+              <el-input
+                v-if="defaultValueType === 'text'"
+                v-model="currentField.defaultValue"
+                :placeholder="`请输入默认值`"
+                @change="handleFieldChange"
+              />
+              <!-- 数字输入 -->
+              <el-input-number
+                v-else-if="defaultValueType === 'number'"
+                v-model="currentField.defaultValue"
+                style="width: 100%"
+                @change="handleFieldChange"
+              />
+              <!-- 开关 -->
+              <el-switch
+                v-else-if="defaultValueType === 'boolean'"
+                v-model="currentField.defaultValue"
+                @change="handleFieldChange"
+              />
+              <!-- 多选 -->
+              <el-select
+                v-else-if="defaultValueType === 'array'"
+                v-model="currentField.defaultValue"
+                multiple
+                collapse-tags
+                collapse-tags-tooltip
+                placeholder="请选择默认值"
+                style="width: 100%"
+                @change="handleFieldChange"
+              >
+                <el-option
+                  v-for="opt in defaultValueOptions"
+                  :key="opt.value"
+                  :label="opt.label"
+                  :value="opt.value"
+                />
+              </el-select>
+            </el-form-item>
+
             <!-- 必填 -->
             <el-form-item>
               <template #label>
                 <span>必填</span>
-                <el-switch 
-                  v-model="localField.required" 
+                <el-switch
+                  v-model="currentField.required"
                   size="small"
                   @change="handleFieldChange"
                 />
               </template>
             </el-form-item>
-            
+
             <!-- 禁用 -->
             <el-form-item>
               <template #label>
                 <span>禁用</span>
-                <el-switch 
-                  v-model="localField.disabled" 
+                <el-switch
+                  v-model="currentField.disabled"
                   size="small"
                   @change="handleFieldChange"
                 />
               </template>
             </el-form-item>
-            
+
             <!-- 隐藏 -->
             <el-form-item>
               <template #label>
                 <span>隐藏</span>
-                <el-switch 
-                  v-model="localField.hidden" 
+                <el-switch
+                  v-model="currentField.hidden"
                   size="small"
                   @change="handleFieldChange"
                 />
@@ -80,29 +122,29 @@
             </el-form-item>
           </el-form>
         </div>
-        
+
         <!-- 特有属性 -->
         <div class="property-group" v-if="specificProps.length > 0">
           <div class="group-title">
             <el-icon><MagicStick /></el-icon>
             特有属性
           </div>
-          
-          <el-form label-position="top" size="small" :model="localField">
+
+          <el-form label-position="top" size="small" :model="currentField">
             <template v-for="prop in specificProps" :key="prop.name">
               <!-- 文本输入 -->
               <el-form-item :label="prop.label" v-if="prop.type === 'text'">
-                <el-input 
-                  v-model="localField[prop.name]" 
+                <el-input
+                  v-model="currentField[prop.name]"
                   :placeholder="prop.placeholder || ''"
                   @change="handleFieldChange"
                 />
               </el-form-item>
-              
+
               <!-- 数字输入 -->
               <el-form-item :label="prop.label" v-if="prop.type === 'number'">
-                <el-input-number 
-                  v-model="localField[prop.name]" 
+                <el-input-number
+                  v-model="currentField[prop.name]"
                   :min="prop.min ?? -Infinity"
                   :max="prop.max ?? Infinity"
                   :step="prop.step || 1"
@@ -110,26 +152,26 @@
                   @change="handleFieldChange"
                 />
               </el-form-item>
-              
+
               <!-- 开关 -->
               <el-form-item :label="prop.label" v-if="prop.type === 'switch'">
-                <el-switch 
-                  v-model="localField[prop.name]"
+                <el-switch
+                  v-model="currentField[prop.name]"
                   @change="handleFieldChange"
                 />
               </el-form-item>
-              
+
               <!-- 下拉选择 -->
               <el-form-item :label="prop.label" v-if="prop.type === 'select'">
-                <el-select 
-                  v-model="localField[prop.name]" 
+                <el-select
+                  v-model="currentField[prop.name]"
                   style="width: 100%"
                   @change="handleFieldChange"
                 >
-                  <el-option 
-                    v-for="opt in prop.options" 
-                    :key="opt.value" 
-                    :label="opt.label" 
+                  <el-option
+                    v-for="opt in prop.options"
+                    :key="opt.value"
+                    :label="opt.label"
                     :value="opt.value"
                   />
                 </el-select>
@@ -137,39 +179,39 @@
             </template>
           </el-form>
         </div>
-        
+
         <!-- 选项配置 -->
         <div class="property-group" v-if="showOptionsConfig">
           <div class="group-title">
             <el-icon><List /></el-icon>
             选项配置
           </div>
-          
-          <OptionsEditor 
-            v-model="localField.options"
+
+          <OptionsEditor
+            v-model="currentField.options"
             @change="handleFieldChange"
           />
         </div>
-        
+
         <!-- 样式属性 -->
         <div class="property-group">
           <div class="group-title">
             <el-icon><Brush /></el-icon>
             样式属性
           </div>
-          
-          <el-form label-position="top" size="small" :model="localField">
+
+          <el-form label-position="top" size="small" :model="currentField">
             <!-- 宽度 -->
             <el-form-item label="宽度">
-              <el-input 
-                v-model="localField.width" 
+              <el-input
+                v-model="currentField.width"
                 placeholder="如: 100%, 200px"
                 @change="handleFieldChange"
               >
                 <template #append>px/%</template>
               </el-input>
             </el-form-item>
-            
+
             <!-- 自定义样式 -->
             <el-form-item label="自定义样式">
               <el-input
@@ -232,7 +274,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch, reactive } from 'vue'
+import { ref, computed, watch, reactive, onMounted } from 'vue'
 import { Setting, MagicStick, List, Brush, Grid } from '@element-plus/icons-vue'
 import { useFormStore } from '@/stores/formStore'
 import type { FormField, FieldType } from '@/types/form'
@@ -240,7 +282,7 @@ import OptionsEditor from './OptionsEditor.vue'
 
 // Props
 const props = defineProps<{
-  field: FormField
+  fieldId: string
 }>()
 
 // Emits
@@ -251,23 +293,23 @@ const emit = defineEmits<{
 // Store
 const formStore = useFormStore()
 
-// 本地字段数据
-const localField = ref<FormField>(JSON.parse(JSON.stringify(props.field)))
-
-// 表单布局
-const layout = reactive({
-  layout: formStore.schema.layout,
-  labelPosition: formStore.schema.labelPosition,
-  labelWidth: formStore.schema.labelWidth,
-  gutter: formStore.schema.gutter
-})
-
 // 自定义样式文本
 const customStyleText = ref('')
 
+// 根据 fieldId 获取当前字段
+const currentField = computed(() => {
+  for (const row of formStore.schema.fields) {
+    const field = row.find(f => f.id === props.fieldId)
+    if (field) return field
+  }
+  return null
+})
+
 // 字段类型标签
 const fieldTypeLabel = computed(() => {
-  const labels: Record<FieldType, string> = {
+  const field = currentField.value
+  if (!field) return ''
+  const typeLabels: Record<string, string> = {
     input: '输入框',
     textarea: '文本域',
     number: '数字输入',
@@ -278,31 +320,97 @@ const fieldTypeLabel = computed(() => {
     date: '日期选择',
     time: '时间选择',
     datetime: '日期时间',
-    cascader: '级联选择',
-    upload: '上传组件',
+    color: '颜色选择',
     rate: '评分',
     slider: '滑块',
-    color: '颜色选择',
-    'tree-select': '树选择',
     divider: '分割线',
     card: '卡片',
-    collapse: '折叠面板'
+    collapse: '折叠面板',
+    upload: '上传组件',
+    cascader: '级联选择',
+    treeSelect: '树选择'
   }
-  return labels[props.field.type] || '未知'
+  return typeLabels[field.type] || field.type
 })
 
 // 显示占位符的组件类型
 const showPlaceholder = computed(() => {
-  return ['input', 'textarea', 'number', 'select', 'date', 'time', 'datetime', 'cascader'].includes(props.field.type)
+  const field = currentField.value
+  if (!field) return false
+  return ['input', 'textarea', 'number', 'select', 'date', 'time', 'datetime', 'cascader', 'treeSelect'].includes(field.type)
 })
 
 // 显示选项配置的组件类型
 const showOptionsConfig = computed(() => {
-  return ['select', 'radio', 'checkbox'].includes(props.field.type)
+  const field = currentField.value
+  if (!field) return false
+  return ['select', 'radio', 'checkbox', 'cascader', 'treeSelect'].includes(field.type)
+})
+
+// 表单布局 - 直接响应 store
+const layout = computed({
+  get: () => ({
+    layout: formStore.schema.layout,
+    labelPosition: formStore.schema.labelPosition,
+    labelWidth: formStore.schema.labelWidth,
+    gutter: formStore.schema.gutter
+  }),
+  set: (val) => {
+    formStore.updateSchemaInfo(val)
+  }
+})
+
+// 监听布局变化
+watch(() => formStore.schema, (newSchema) => {
+  layout.value = {
+    layout: newSchema.layout,
+    labelPosition: newSchema.labelPosition,
+    labelWidth: newSchema.labelWidth,
+    gutter: newSchema.gutter
+  }
+}, { deep: true })
+
+// 初始化自定义样式文本
+watch(() => currentField.value?.customStyle, (style) => {
+  customStyleText.value = style ? JSON.stringify(style, null, 2) : ''
+}, { immediate: true })
+
+// 显示默认值的组件类型
+const showDefaultValue = computed(() => {
+  const field = currentField.value
+  if (!field) return false
+  return ['input', 'textarea', 'number', 'select', 'radio', 'checkbox', 'switch', 'date', 'time', 'datetime', 'color', 'rate'].includes(field.type)
+})
+
+// 默认值类型
+const defaultValueType = computed(() => {
+  const field = currentField.value
+  if (!field) return 'text'
+  switch (field.type) {
+    case 'number':
+      return 'number'
+    case 'switch':
+      return 'boolean'
+    case 'select':
+    case 'checkbox':
+      return 'array'
+    default:
+      return 'text'
+  }
+})
+
+// 默认值选项（用于多选类型）
+const defaultValueOptions = computed(() => {
+  const field = currentField.value
+  if (!field || !['select', 'radio', 'checkbox'].includes(field.type)) return []
+  return (field as any).options || []
 })
 
 // 特有属性配置
 const specificProps = computed(() => {
+  const field = currentField.value
+  if (!field) return []
+
   const propsConfig: Record<FieldType, Array<{ name: string; label: string; type: string; options?: any[]; min?: number; max?: number; step?: number; placeholder?: string }>> = {
     input: [
       { name: 'maxlength', label: '最大长度', type: 'number', min: 0, max: 5000 },
@@ -425,27 +533,24 @@ const specificProps = computed(() => {
       { name: 'accordion', label: '手风琴模式', type: 'switch' }
     ]
   }
-  
-  return propsConfig[props.field.type] || []
+
+  return propsConfig[field.type] || []
 })
 
-// 监听props变化
-watch(() => props.field, (newField) => {
-  localField.value = JSON.parse(JSON.stringify(newField))
-}, { deep: true })
-
-// 字段变化处理
+// 字段变化处理 - 直接更新到 store
 const handleFieldChange = () => {
-  emit('update', localField.value)
+  if (currentField.value) {
+    formStore.updateField(currentField.value)
+  }
 }
 
 // 自定义样式变化处理
 const handleCustomStyleChange = () => {
   try {
     if (customStyleText.value.trim()) {
-      localField.value.customStyle = JSON.parse(customStyleText.value)
+      currentField.value!.customStyle = JSON.parse(customStyleText.value)
     } else {
-      localField.value.customStyle = {}
+      currentField.value!.customStyle = {}
     }
     handleFieldChange()
   } catch (e) {

@@ -2,7 +2,7 @@
 <template>
   <div class="field-number">
     <el-input-number
-      :model-value="fieldValue"
+      :model-value="mode === 'design' ? field.defaultValue : fieldValue"
       :disabled="mode === 'design' || field.disabled"
       :min="field.min"
       :max="field.max"

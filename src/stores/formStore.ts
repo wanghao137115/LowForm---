@@ -75,9 +75,10 @@ export const useFormStore = defineStore('form', () => {
   // ========== 方法 ==========
   
   /**
-   * 添加字段到指定行
+   * 添加字段到指定行和列
    */
-  const addField = (type: FieldType, options?: Partial<FormField>, targetRowIndex?: number): FormField => {
+  const addField = (type: FieldType, options?: Partial<FormField>, targetRowIndex?: number, targetColIndex?: number): FormField => {
+    console.log('11111')
     const name = generateFieldName(type)
     const defaultProps = getDefaultProps(type)
     
@@ -102,28 +103,57 @@ export const useFormStore = defineStore('form', () => {
         { label: '选项二', value: '2' }
       ]
     }
-    
 
     // 如果指定了行号且该行存在
     if (targetRowIndex !== undefined && targetRowIndex >= 0 && targetRowIndex < schema.value.fields.length) {
       const targetRow = schema.value.fields[targetRowIndex]
-      // 检查该行是否为空
-      const isEmptyRow = targetRow.length === 0
       
-      if (isEmptyRow) {
-        // 空行，新字段占满
-        field.span = 24
-        schema.value.fields[targetRowIndex].push(field)
+      // 如果指定了列索引，插入到指定位置
+      if (targetColIndex !== undefined && targetColIndex >= 0 && targetColIndex <= targetRow.length) {
+        // 检查该行是否为空
+        const isEmptyRow = targetRow.length === 0
+        
+        if (isEmptyRow) {
+          // 空行，新字段占满
+          field.span = 24
+          schema.value.fields[targetRowIndex].push(field)
+        } else {
+          // 非空行，检查是否已满（4个元素）
+          if (targetRow.length >= 4) {
+            return field
+          }
+          // 插入到指定列索引位置
+          targetRow.splice(targetColIndex, 0, field)
+          // 重新计算 span
+          const newCount = targetRow.length
+          const newSpan = Math.floor(24 / newCount)
+          targetRow.forEach((f, idx) => {
+            f.span = idx === newCount - 1 ? 24 - newSpan * (newCount - 1) : newSpan
+          })
+        }
       } else {
-        // 非空行，添加到末尾后重新计算所有元素的 span
-
-        targetRow.push(field)
-        const newCount = targetRow.length
-        const newSpan = Math.floor(24 / newCount)
-        // 重新分配 span，最后一个元素填充剩余空间
-        targetRow.forEach((f, idx) => {
-          f.span = idx === newCount - 1 ? 24 - newSpan * (newCount - 1) : newSpan
-        })
+        // 没有指定列索引，添加到行末（原有逻辑）
+        // 检查该行是否为空
+        const isEmptyRow = targetRow.length === 0
+        
+        if (isEmptyRow) {
+          // 空行，新字段占满
+          field.span = 24
+          schema.value.fields[targetRowIndex].push(field)
+        } else {
+          // 非空行，检查是否已满（4个元素）
+          if (targetRow.length >= 4) {
+            return field
+          }
+          // 尝试添加到该行
+          targetRow.push(field)
+          const newCount = targetRow.length
+          const newSpan = Math.floor(24 / newCount)
+          // 重新分配 span，最后一个元素填充剩余空间
+          targetRow.forEach((f, idx) => {
+            f.span = idx === newCount - 1 ? 24 - newSpan * (newCount - 1) : newSpan
+          })
+        }
       }
       
       saveToHistory()
@@ -139,7 +169,10 @@ export const useFormStore = defineStore('form', () => {
       // 尝试添加到第一行，如果满了就创建新行
       const firstRow = schema.value.fields[0]
       const firstRowSpan = firstRow.reduce((sum, f) => sum + (f.span || 6), 0)
-      if (firstRowSpan + (field.span || 6) <= 24) {
+      // 非空行最多4个元素，超过则创建新行
+      if (firstRow.length >= 4 || firstRowSpan + (field.span || 6) > 24) {
+        schema.value.fields.push([field])
+      } else {
         firstRow.push(field)
         // 重新计算该行所有元素的 span
         const newCount = firstRow.length
@@ -147,8 +180,6 @@ export const useFormStore = defineStore('form', () => {
         firstRow.forEach((f, idx) => {
           f.span = idx === newCount - 1 ? 24 - newSpan * (newCount - 1) : newSpan
         })
-      } else {
-        schema.value.fields.push([field])
       }
     }
     
