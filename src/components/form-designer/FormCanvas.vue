@@ -290,6 +290,23 @@ const handleFieldDragEnd = () => {
   dragOverInfo.value = null
 }
 
+// 键盘快捷键处理
+const handleKeyDown = (event: KeyboardEvent) => {
+  // Ctrl+Z 撤销
+  if ((event.ctrlKey || event.metaKey) && event.key === 'z') {
+    event.preventDefault()
+    formStore.undo()
+    return
+  }
+  
+  // Ctrl+Y 重做
+  if ((event.ctrlKey || event.metaKey) && event.key === 'y') {
+    event.preventDefault()
+    formStore.redo()
+    return
+  }
+}
+
 // 全局拖拽结束处理
 const handleGlobalDragEnd = () => {
 
@@ -305,6 +322,11 @@ const handleRowDragOver = (event: DragEvent, rowIndex: number) => {
   // 必须设置 dropEffect 才能触发 drop 事件
   if (event.dataTransfer) {
     event.dataTransfer.dropEffect = 'move'
+  }
+
+  // 如果已经悬浮在字段上，不覆盖 dragOverInfo（防止行事件覆盖字段事件）
+  if (dragOverInfo.value?.type === 'field') {
+    return
   }
 
   // 打印悬浮在行上
@@ -326,10 +348,13 @@ const handleRowDrop = (event: DragEvent, rowIndex: number) => {
   // 不阻止冒泡，让事件继续冒泡到画布容器统一处理
   // 这里只更新悬浮状态，实际处理逻辑在画布容器的 handleDrop 中
 
-  // 确保 dragOverInfo 记录的是当前行
-  if (!dragOverInfo.value || dragOverInfo.value.type !== 'row' || dragOverInfo.value.rowIndex !== rowIndex) {
-    dragOverInfo.value = { type: 'row', rowIndex }
+  // 如果已经悬浮在字段上，不更新为行悬浮（防止行事件覆盖字段事件）
+  if (dragOverInfo.value?.type === 'field') {
+    return
   }
+
+  // 确保 dragOverInfo 记录的是当前行
+  dragOverInfo.value = { type: 'row', rowIndex }
 }
 
 // 字段拖拽经过 - 悬浮到字段上，计算具体位置
@@ -362,7 +387,7 @@ const handleFieldDragOver = (event: DragEvent, field: FormField, rowIndex: numbe
     position = 'top'
   } else if (y > centerY * 1.65) {
     position = 'bottom'
-  } else if (x < centerX * 0.35) {
+  } else if (x < centerX) {
     position = 'left'
   } else {
     position = 'right'
@@ -396,7 +421,7 @@ const handleFieldDrop = (event: DragEvent, field: FormField, rowIndex: number, c
       const info = dragOverInfo.value
       let targetRowIndex = rowIndex
       let targetColIndex = colIndex
-
+      console.log(dragOverInfo.value)
       if (info?.position) {
         switch (info.position) {
           case 'top':
@@ -753,6 +778,8 @@ onMounted(() => {
   document.addEventListener('dragend', handleGlobalDragEnd)
   // 添加全局 drop 监听器作为后备
   document.addEventListener('drop', handleGlobalDrop)
+  // 添加键盘快捷键监听
+  document.addEventListener('keydown', handleKeyDown)
 })
 
 onUnmounted(() => {
@@ -760,6 +787,8 @@ onUnmounted(() => {
   document.removeEventListener('dragend', handleGlobalDragEnd)
   // 移除全局 drop 监听器
   document.removeEventListener('drop', handleGlobalDrop)
+  // 移除键盘快捷键监听
+  document.removeEventListener('keydown', handleKeyDown)
   // 同时重置所有拖拽状态
   formStore.resetDragState()
 })

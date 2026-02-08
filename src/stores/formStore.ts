@@ -42,9 +42,14 @@ export const useFormStore = defineStore('form', () => {
     position: 'left' | 'right' | 'top' | 'bottom' | null
   } | null>(null)
   
-  // 历史记录（用于撤销/重做）
-  const historyStack = ref<FormSchema[]>([])
-  const historyIndex = ref(-1)
+  // 历史记录（用于撤销/重做 - 添加/删除/移动记录）
+  type HistoryAction = 
+    | { type: 'add'; field: FormField; rowIndex: number; colIndex: number }
+    | { type: 'delete'; field: FormField; rowIndex: number; colIndex: number }
+    | { type: 'move'; field: FormField; fromRowIndex: number; fromColIndex: number; toRowIndex: number; toColIndex: number }
+  
+  const actionHistory = ref<HistoryAction[]>([])
+  const actionIndex = ref(-1)
   
   // ========== 计算属性 ==========
   
@@ -66,11 +71,11 @@ export const useFormStore = defineStore('form', () => {
     return null
   })
   
-  // 是否可以撤销
-  const canUndo = computed(() => historyIndex.value > 0)
+  // 是否可以撤销（基于操作历史）
+  const canUndo = computed(() => actionIndex.value >= 0)
   
-  // 是否可以重做
-  const canRedo = computed(() => historyIndex.value < historyStack.value.length - 1)
+  // 是否可以重做（基于操作历史）
+  const canRedo = computed(() => actionIndex.value < actionHistory.value.length - 1)
   
   // ========== 方法 ==========
   
@@ -156,15 +161,27 @@ export const useFormStore = defineStore('form', () => {
         }
       }
       
-      saveToHistory()
-      selectedFieldId.value = field.id
-      return field
+      // 查找刚添加的字段位置并记录添加操作
+        let addedRowIndex = targetRowIndex
+        let addedColIndex = targetColIndex ?? targetRow.length - 1
+        if (targetRow.length > 0) {
+          addedColIndex = targetColIndex ?? targetRow.length - 1
+        }
+        recordAddAction(field, addedRowIndex, addedColIndex)
+        
+        selectedFieldId.value = field.id
+        return field
     }
     
     // 默认添加到新行或第一行
+    let addedRowIndex = 0
+    let addedColIndex = 0
+    
     if (schema.value.fields.length === 0) {
       field.span = 24  // 空表单，第一个字段占满
       schema.value.fields.push([field])
+      addedRowIndex = 0
+      addedColIndex = 0
     } else {
       // 尝试添加到第一行，如果满了就创建新行
       const firstRow = schema.value.fields[0]
@@ -172,6 +189,8 @@ export const useFormStore = defineStore('form', () => {
       // 非空行最多4个元素，超过则创建新行
       if (firstRow.length >= 4 || firstRowSpan + (field.span || 6) > 24) {
         schema.value.fields.push([field])
+        addedRowIndex = schema.value.fields.length - 1
+        addedColIndex = 0
       } else {
         firstRow.push(field)
         // 重新计算该行所有元素的 span
@@ -180,13 +199,66 @@ export const useFormStore = defineStore('form', () => {
         firstRow.forEach((f, idx) => {
           f.span = idx === newCount - 1 ? 24 - newSpan * (newCount - 1) : newSpan
         })
+        addedRowIndex = 0
+        addedColIndex = firstRow.length - 1
       }
     }
     
-    saveToHistory()
+    // 记录添加操作
+    recordAddAction(field, addedRowIndex, addedColIndex)
+    
     selectedFieldId.value = field.id
     
     return field
+  }
+  
+  // ========== 撤销/重做相关方法 ==========
+  
+  // 记录添加操作
+  const recordAddAction = (field: FormField, rowIndex: number, colIndex: number) => {
+    // 清除当前索引之后的所有记录
+    actionHistory.value = actionHistory.value.slice(0, actionIndex.value + 1)
+    // 添加新记录
+    actionHistory.value.push({
+      type: 'add',
+      field: JSON.parse(JSON.stringify(field)),
+      rowIndex,
+      colIndex
+    })
+    actionIndex.value = actionHistory.value.length - 1
+    console.log('[撤销记录] 添加操作:', actionIndex.value, '/', actionHistory.value.length)
+  }
+  
+  // 记录删除操作
+  const recordDeleteAction = (field: FormField, rowIndex: number, colIndex: number) => {
+    // 清除当前索引之后的所有记录
+    actionHistory.value = actionHistory.value.slice(0, actionIndex.value + 1)
+    // 添加新记录
+    actionHistory.value.push({
+      type: 'delete',
+      field: JSON.parse(JSON.stringify(field)),
+      rowIndex,
+      colIndex
+    })
+    actionIndex.value = actionHistory.value.length - 1
+    console.log('[撤销记录] 删除操作:', actionIndex.value, '/', actionHistory.value.length)
+  }
+  
+  // 记录移动操作
+  const recordMoveAction = (field: FormField, fromRowIndex: number, fromColIndex: number, toRowIndex: number, toColIndex: number) => {
+    // 清除当前索引之后的所有记录
+    actionHistory.value = actionHistory.value.slice(0, actionIndex.value + 1)
+    // 添加新记录
+    actionHistory.value.push({
+      type: 'move',
+      field: JSON.parse(JSON.stringify(field)),
+      fromRowIndex,
+      fromColIndex,
+      toRowIndex,
+      toColIndex
+    })
+    actionIndex.value = actionHistory.value.length - 1
+    console.log('[撤销记录] 移动操作:', actionIndex.value, '/', actionHistory.value.length)
   }
   
   /**
@@ -197,7 +269,6 @@ export const useFormStore = defineStore('form', () => {
       const index = row.findIndex(f => f.id === field.id)
       if (index !== -1) {
         row[index] = field
-        saveToHistory()
         return
       }
     }
@@ -211,6 +282,9 @@ export const useFormStore = defineStore('form', () => {
       const row = schema.value.fields[rowIndex]
       const index = row.findIndex(f => f.id === fieldId)
       if (index !== -1) {
+        // 保存被删除的字段，用于撤销
+        const deletedField = JSON.parse(JSON.stringify(row[index]))
+        
         row.splice(index, 1)
         
         // 如果该行空了，删除该行
@@ -223,7 +297,8 @@ export const useFormStore = defineStore('form', () => {
           selectedFieldId.value = null
         }
         
-        saveToHistory()
+        // 记录删除操作
+        recordDeleteAction(deletedField, rowIndex, index)
         return
       }
     }
@@ -291,11 +366,13 @@ export const useFormStore = defineStore('form', () => {
       console.log('[moveField] 超过最后一行，创建新行')
     } else {
       schema.value.fields[toRowIndex].splice(toColIndex, 0, field)
-      console.log('[moveField] 插入到目标行:', toRowIndex, toColIndex)
+      console.log('[moveField] 插入到目标行:', toRowIndex)
     }
 
+    // 记录移动操作（使用原始的 toRow, toColIndexIndex 和 toColIndex）
+    recordMoveAction(field, fromRowIndex, fromColIndex, toRowIndex, toColIndex)
+    
     console.log('[moveField] 最终结果:', JSON.stringify(schema.value.fields.map(r => r.map(f => f.label))))
-    saveToHistory()
   }
   
   /**
@@ -315,7 +392,7 @@ export const useFormStore = defineStore('form', () => {
         // 插入到原位置后面
         row.splice(colIndex + 1, 0, newField)
         
-        saveToHistory()
+        recordAddAction(newField, rowIndex, colIndex + 1)
         selectedFieldId.value = newField.id
         
         return newField
@@ -341,7 +418,6 @@ export const useFormStore = defineStore('form', () => {
           schema.value.fields.splice(rowIndex, 1)
         }
         
-        saveToHistory()
         return
       }
     }
@@ -364,7 +440,6 @@ export const useFormStore = defineStore('form', () => {
           schema.value.fields.splice(rowIndex, 1)
         }
         
-        saveToHistory()
         return
       }
     }
@@ -411,7 +486,6 @@ export const useFormStore = defineStore('form', () => {
    */
   const updateSchemaInfo = (info: Partial<FormSchema>): void => {
     Object.assign(schema.value, info)
-    saveToHistory()
   }
   
   /**
@@ -429,9 +503,9 @@ export const useFormStore = defineStore('form', () => {
     
     schema.value = JSON.parse(JSON.stringify(newSchema))
     selectedFieldId.value = null
-    historyStack.value = []
-    historyIndex.value = -1
-    saveToHistory()
+    // 清空撤销/重做历史
+    actionHistory.value = []
+    actionIndex.value = -1
   }
   
   /**
@@ -449,31 +523,158 @@ export const useFormStore = defineStore('form', () => {
       gutter: 16
     }
     selectedFieldId.value = null
-    historyStack.value = []
-    historyIndex.value = -1
-    saveToHistory()
+    // 清空撤销/重做历史
+    actionHistory.value = []
+    actionIndex.value = -1
   }
   
   /**
-   * 撤销
+   * 撤销（删除刚添加的字段 / 恢复移动前的位置）
    */
   const undo = (): void => {
-    if (canUndo.value) {
-      historyIndex.value--
-      schema.value = JSON.parse(JSON.stringify(historyStack.value[historyIndex.value]))
-      selectedFieldId.value = null
+    if (!canUndo.value) return
+    
+    const action = actionHistory.value[actionIndex.value]
+    console.log('[撤销] 执行撤销:', action.type, action.field.label)
+    
+    if (action.type === 'add') {
+      // 撤销添加 = 删除字段
+      const { rowIndex, colIndex } = action
+      
+      // 检查字段是否还存在
+      const row = schema.value.fields[rowIndex]
+      if (row) {
+        // 优先使用记录的 colIndex，如果不存在则查找
+        const index = colIndex >= 0 && colIndex < row.length && row[colIndex]?.id === action.field.id 
+          ? colIndex 
+          : row.findIndex(f => f.id === action.field.id)
+        if (index !== -1) {
+          row.splice(index, 1)
+          
+          // 如果该行空了，删除该行
+          if (row.length === 0) {
+            schema.value.fields.splice(rowIndex, 1)
+          }
+        }
+      }
+    } else if (action.type === 'move') {
+      // 撤销移动 = 将元素移回原位置
+      // 移动操作是从 from -> to，撤销就是从 to -> from
+      const { field, fromRowIndex, fromColIndex, toRowIndex } = action
+      
+      // 先从当前位置移除
+      const currentRow = schema.value.fields[toRowIndex]
+      if (currentRow) {
+        const index = currentRow.findIndex(f => f.id === field.id)
+        if (index !== -1) {
+          currentRow.splice(index, 1)
+          
+          // 如果当前位置行为空，删除该行
+          if (currentRow.length === 0) {
+            schema.value.fields.splice(toRowIndex, 1)
+          }
+        }
+      }
+      
+      // 恢复到原位置
+      // 调整 fromRowIndex（如果删除了行）
+      let adjustedFromRow = fromRowIndex
+      if (toRowIndex < fromRowIndex && schema.value.fields.length <= fromRowIndex) {
+        adjustedFromRow = schema.value.fields.length
+      }
+      
+      // 确保行存在
+      while (schema.value.fields.length <= adjustedFromRow) {
+        schema.value.fields.push([])
+      }
+      
+      // 插入到原位置
+      schema.value.fields[adjustedFromRow].splice(fromColIndex, 0, field)
+      
+      // 重新计算 span
+      const newRow = schema.value.fields[adjustedFromRow]
+      const newCount = newRow.length
+      const newSpan = Math.floor(24 / newCount)
+      newRow.forEach((f, idx) => {
+        f.span = idx === newCount - 1 ? 24 - newSpan * (newCount - 1) : newSpan
+      })
     }
+    
+    actionIndex.value--
+    selectedFieldId.value = null
   }
   
   /**
-   * 重做
+   * 重做（恢复刚删除的字段 / 执行移动操作）
    */
   const redo = (): void => {
-    if (canRedo.value) {
-      historyIndex.value++
-      schema.value = JSON.parse(JSON.stringify(historyStack.value[historyIndex.value]))
-      selectedFieldId.value = null
+    if (!canRedo.value) return
+    
+    actionIndex.value++
+    const action = actionHistory.value[actionIndex.value]
+    console.log('[重做] 执行重做:', action.type, action.field.label)
+    
+    if (action.type === 'delete') {
+      // 重做删除 = 恢复字段
+      const { field, rowIndex, colIndex } = action
+      
+      // 确保行存在
+      while (schema.value.fields.length <= rowIndex) {
+        schema.value.fields.push([])
+      }
+      
+      // 恢复字段
+      const row = schema.value.fields[rowIndex]
+      row.splice(colIndex, 0, field)
+      
+      // 重新计算 span
+      const newCount = row.length
+      const newSpan = Math.floor(24 / newCount)
+      row.forEach((f, idx) => {
+        f.span = idx === newCount - 1 ? 24 - newSpan * (newCount - 1) : newSpan
+      })
+    } else if (action.type === 'move') {
+      // 重做移动 = 将元素移到目标位置
+      const { field, fromRowIndex, toRowIndex, toColIndex } = action
+      
+      // 先从原位置移除
+      const originalRow = schema.value.fields[fromRowIndex]
+      if (originalRow) {
+        const index = originalRow.findIndex(f => f.id === field.id)
+        if (index !== -1) {
+          originalRow.splice(index, 1)
+          
+          // 如果原位置行为空，删除该行
+          if (originalRow.length === 0) {
+            schema.value.fields.splice(fromRowIndex, 1)
+          }
+        }
+      }
+      
+      // 调整目标行索引（如果原位置行被删除且在目标行之前）
+      let adjustedToRow = toRowIndex
+      if (fromRowIndex < toRowIndex && schema.value.fields.length <= toRowIndex) {
+        adjustedToRow = schema.value.fields.length - 1
+      }
+      
+      // 确保目标行存在
+      while (schema.value.fields.length <= adjustedToRow) {
+        schema.value.fields.push([])
+      }
+      
+      // 插入到目标位置
+      schema.value.fields[adjustedToRow].splice(adjustedToRow >= schema.value.fields.length ? schema.value.fields[adjustedToRow].length : toColIndex, 0, field)
+      
+      // 重新计算 span
+      const newRow = schema.value.fields[adjustedToRow]
+      const newCount = newRow.length
+      const newSpan = Math.floor(24 / newCount)
+      newRow.forEach((f, idx) => {
+        f.span = idx === newCount - 1 ? 24 - newSpan * (newCount - 1) : newSpan
+      })
     }
+    
+    selectedFieldId.value = null
   }
   
   // ========== 私有方法 ==========
@@ -538,24 +739,6 @@ export const useFormStore = defineStore('form', () => {
     return labelMap[type] || '字段'
   }
   
-  /**
-   * 保存到历史记录
-   */
-  const saveToHistory = (): void => {
-    // 移除当前位置之后的历史
-    historyStack.value = historyStack.value.slice(0, historyIndex.value + 1)
-    
-    // 添加当前状态
-    historyStack.value.push(JSON.parse(JSON.stringify(schema.value)))
-    historyIndex.value = historyStack.value.length - 1
-    
-    // 限制历史记录数量
-    if (historyStack.value.length > 50) {
-      historyStack.value.shift()
-      historyIndex.value--
-    }
-  }
-  
   return {
     // 状态
     schema,
@@ -563,8 +746,8 @@ export const useFormStore = defineStore('form', () => {
     isDragging,
     draggedItem,
     dragPreview,
-    historyStack,
-    historyIndex,
+    actionHistory,
+    actionIndex,
     isDraggingFromPanel,
     isDraggingOverForm,
     
@@ -595,7 +778,6 @@ export const useFormStore = defineStore('form', () => {
     selectField: (id: string | null) => { selectedFieldId.value = id },
     updateFields: (fields: FormField[][]) => {
       schema.value.fields = fields
-      saveToHistory()
     }
   }
 })

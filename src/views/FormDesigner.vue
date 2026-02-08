@@ -25,6 +25,22 @@
             预览模式
           </el-button>
         </el-button-group>
+        <el-button-group class="ml-4">
+          <el-button 
+            :disabled="!formStore.canUndo"
+            @click="formStore.undo()"
+            title="撤销"
+          >
+            <el-icon><RefreshLeft /></el-icon>
+          </el-button>
+          <el-button 
+            :disabled="!formStore.canRedo"
+            @click="formStore.redo()"
+            title="重做"
+          >
+            <el-icon><RefreshRight /></el-icon>
+          </el-button>
+        </el-button-group>
       </div>
       <div class="header-right">
         <el-button @click="handleImport">
@@ -118,7 +134,7 @@ import { ref, reactive, onMounted, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { 
-  Edit, View, Upload, Download, Check, Monitor, Pointer 
+  Edit, View, Upload, Download, Check, Monitor, Pointer, RefreshLeft, RefreshRight
 } from '@element-plus/icons-vue'
 import ComponentPanel from '@/components/form-designer/ComponentPanel.vue'
 import FormCanvas from '@/components/form-designer/FormCanvas.vue'
@@ -305,6 +321,9 @@ onUnmounted(() => {
     }
     
     .header-center {
+      .ml-4 {
+        margin-left: 16px;
+      }
       .el-button-group .el-button {
         background: rgba(255, 255, 255, 0.2);
         border-color: rgba(255, 255, 255, 0.3);
