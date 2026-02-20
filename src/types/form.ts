@@ -74,10 +74,12 @@ export interface SelectField extends BaseField {
   remote?: boolean
   remoteMethod?: string
   optionsUrl?: string
+  clearable?: boolean
 }
 
 // 选项项
 export interface OptionItem {
+  [key: string]: any
   label: string
   value: string | number
   disabled?: boolean
@@ -104,6 +106,7 @@ export interface DateTimeField extends BaseField {
   endPlaceholder?: string
   defaultTime?: string[]
   pickerOptions?: Record<string, any>
+  clearable?: boolean
 }
 
 // 级联选择器属性

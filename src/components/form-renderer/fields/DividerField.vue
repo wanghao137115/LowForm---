@@ -10,7 +10,7 @@
 <script setup lang="ts">
 import type { DividerField } from '@/types/form'
 
-const props = defineProps<{
+defineProps<{
   field: DividerField
   mode: 'design' | 'preview' | 'form'
 }>()

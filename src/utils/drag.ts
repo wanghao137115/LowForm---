@@ -11,9 +11,9 @@ export function generateId(): string {
 /**
  * 深拷贝对象
  */
-export function deepClone<T>(obj: T): T {
+export function deepClone<T extends Record<string, any>>(obj: T): T {
   if (obj === null || typeof obj !== 'object') return obj
-  const clone = Array.isArray(obj) ? [] : {}
+  const clone: any = Array.isArray(obj) ? [] : {}
   for (const key in obj) {
     if (obj.hasOwnProperty(key)) {
       clone[key] = deepClone(obj[key])
@@ -272,7 +272,7 @@ export function debounce<T extends (...args: any[]) => any>(
   fn: T,
   delay: number
 ): (...args: Parameters<T>) => void {
-  let timer: NodeJS.Timeout | null = null
+  let timer: ReturnType<typeof setTimeout> | null = null
   return function(this: any, ...args: Parameters<T>) {
     if (timer) clearTimeout(timer)
     timer = setTimeout(() => {

@@ -17,7 +17,7 @@
 <script setup lang="ts">
 import type { CollapseField } from '@/types/form'
 
-const props = defineProps<{
+defineProps<{
   field: CollapseField
   mode: 'design' | 'preview' | 'form'
 }>()

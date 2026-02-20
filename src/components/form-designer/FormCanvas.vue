@@ -175,10 +175,32 @@
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { 
-  Upload, Delete, Rank, CopyDocument, Top, Bottom 
+  Upload, Delete, CopyDocument
 } from '@element-plus/icons-vue'
 import { useFormStore } from '@/stores/formStore'
 import type { FormField, FieldType } from '@/types/form'
+
+// 简单的节流函数
+const throttle = <T extends (...args: any[]) => any>(
+  fn: T,
+  delay: number
+): ((...args: Parameters<T>) => void) => {
+  let lastTime = 0
+  let timer: ReturnType<typeof setTimeout> | null = null
+  return (...args: Parameters<T>) => {
+    const now = Date.now()
+    if (now - lastTime >= delay) {
+      lastTime = now
+      fn(...args)
+    } else if (!timer) {
+      timer = setTimeout(() => {
+        lastTime = Date.now()
+        timer = null
+        fn(...args)
+      }, delay - (now - lastTime))
+    }
+  }
+}
 
 // 直接导入组件
 import FieldRenderer from '@/components/form-renderer/FieldRenderer.vue'
@@ -282,6 +304,12 @@ const handleFieldDragStart = (event: DragEvent, field: FormField, rowIndex: numb
     // 设置拖拽数据
     event.dataTransfer.setData('text/plain', field.id)
   }
+  
+  // 打印拖拽开始信息
+  console.log(`========== [拖拽开始] ==========`)
+  console.log(`字段ID: ${field.id}, 标签: ${field.label}`)
+  console.log(`来源位置: [${rowIndex}, ${colIndex}]`)
+  console.log(`================================`)
 }
 
 // 字段拖拽结束
@@ -316,6 +344,9 @@ const handleGlobalDragEnd = () => {
 }
 
 // 行拖拽经过 - 悬浮到行上
+let lastRowDragOverTime = 0
+const ROW_DRAG_OVER_THROTTLE = 50 // 50ms 节流
+
 const handleRowDragOver = (event: DragEvent, rowIndex: number) => {
   event.preventDefault()
 
@@ -323,6 +354,13 @@ const handleRowDragOver = (event: DragEvent, rowIndex: number) => {
   if (event.dataTransfer) {
     event.dataTransfer.dropEffect = 'move'
   }
+
+  // 节流处理
+  const now = Date.now()
+  if (now - lastRowDragOverTime < ROW_DRAG_OVER_THROTTLE) {
+    return
+  }
+  lastRowDragOverTime = now
 
   // 如果已经悬浮在字段上，不覆盖 dragOverInfo（防止行事件覆盖字段事件）
   if (dragOverInfo.value?.type === 'field') {
@@ -357,7 +395,10 @@ const handleRowDrop = (event: DragEvent, rowIndex: number) => {
   dragOverInfo.value = { type: 'row', rowIndex }
 }
 
-// 字段拖拽经过 - 悬浮到字段上，计算具体位置
+// 字段拖拽经过 - 悬浮到字段上，计算具体位置（已添加节流处理）
+let lastDragOverTime = 0
+const DRAG_OVER_THROTTLE = 50 // 50ms 节流
+
 const handleFieldDragOver = (event: DragEvent, field: FormField, rowIndex: number, colIndex: number) => {
   event.preventDefault()
 
@@ -368,6 +409,13 @@ const handleFieldDragOver = (event: DragEvent, field: FormField, rowIndex: numbe
 
   // 如果是自己拖自己，跳过
   if (draggingField.value?.field.id === field.id) return
+  
+  // 节流处理：限制更新频率
+  const now = Date.now()
+  if (now - lastDragOverTime < DRAG_OVER_THROTTLE) {
+    return
+  }
+  lastDragOverTime = now
   
   // 计算相对于字段的位置
   // 使用 currentTarget 获取绑定事件的元素（.field-item），确保获取的是正确的元素边界
@@ -382,19 +430,36 @@ const handleFieldDragOver = (event: DragEvent, field: FormField, rowIndex: numbe
   
   let position: 'top' | 'bottom' | 'left' | 'right' = 'right'
   
-  // 扩大 left 判断范围：左侧 35% 区域判定为 left
-  if (y < centerY * 0.35) {
+  // 扩大 left 判断范围：左侧 40% 区域判定为 left
+  // 当从下方拖拽到上方时，y 可能在中心附近，需要优先判断 x 坐标
+  if (y < centerY * 0.3) {
+    // 上部 30% 区域 -> top
     position = 'top'
-  } else if (y > centerY * 1.65) {
+  } else if (y > centerY * 1.7) {
+    // 下部 30% 区域 -> bottom
     position = 'bottom'
-  } else if (x < centerX) {
+  } else if (x < centerX * 1.2) {
+    // 左侧 40% 区域 -> left（扩大范围）
     position = 'left'
   } else {
+    // 其余 -> right
     position = 'right'
   }
   
-  // 打印被悬浮块的二维坐标和位置
-  console.log(`[悬浮表单块] 坐标: [${rowIndex}, ${colIndex}], 位置: ${position}`)
+  // 获取当前行的字段数量
+  const currentRowFields = schema.value.fields[rowIndex] || []
+  const currentRowCount = currentRowFields.length
+  
+  // 打印被悬浮块的详细信息
+  console.log(`========== [悬浮表单块] ==========`)
+  console.log(`悬浮字段: ${field.label} (ID: ${field.id})`)
+  console.log(`悬浮位置: [${rowIndex}, ${colIndex}]`)
+  console.log(`悬浮方位: ${position}`)
+  console.log(`当前行字段数: ${currentRowCount}`)
+  console.log(`鼠标坐标: x=${x.toFixed(1)}, y=${y.toFixed(1)}`)
+  console.log(`元素尺寸: width=${width.toFixed(1)}, height=${height.toFixed(1)}`)
+  console.log(`中心点: centerX=${centerX.toFixed(1)}, centerY=${centerY.toFixed(1)}`)
+  console.log(`==================================`)
   
   // 记录悬浮在字段上
   dragOverInfo.value = { type: 'field', rowIndex, colIndex, position }
@@ -410,6 +475,9 @@ const handleFieldDrop = (event: DragEvent, field: FormField, rowIndex: number, c
   event.preventDefault()
   // 阻止冒泡，避免触发 handleRowDrop 和 handleDrop
   event.stopPropagation()
+  
+  // 标记 drop 已被处理，避免 handleDrop 重复处理
+  dropProcessed.value = true
 
   // 如果是从组件面板拖拽过来的，处理添加到指定位置
   // 优先判断这个，因为可能是 handleGlobalDrop 先清空了 draggingField.value
@@ -460,46 +528,77 @@ const handleFieldDrop = (event: DragEvent, field: FormField, rowIndex: number, c
 
   // 检查是否正在拖拽表单内字段
   if (!draggingField.value) {
+    console.log('[handleFieldDrop] 没有正在拖拽的字段')
     return
   }
 
   // 检查是否是自己拖自己
   if (draggingField.value.field.id === field.id) {
+    console.log('[handleFieldDrop] 拖拽自己，跳过')
     return
   }
 
   const { fromRowIndex, fromColIndex } = draggingField.value
+  const draggedFieldLabel = draggingField.value.field.label
 
   // 根据悬浮状态计算目标位置
   let targetRowIndex = rowIndex
   let targetColIndex = colIndex
 
   const info = dragOverInfo.value
+  let isNewRow = false
+  
   if (info?.type === 'field' && info.position) {
     switch (info.position) {
       case 'top':
+        // 插入到上一行
         if (rowIndex > 0) {
           targetRowIndex = rowIndex - 1
           targetColIndex = schema.value.fields[targetRowIndex].length
+          isNewRow = true
         }
         break
       case 'bottom':
+        // 插入到当前行末尾（可能换行）
         targetRowIndex = rowIndex
         targetColIndex = schema.value.fields[rowIndex].length
+        isNewRow = schema.value.fields[rowIndex].length >= 4
         break
       case 'left':
+        // 插入到当前字段前面（同位置）
         targetRowIndex = rowIndex
         targetColIndex = colIndex
         break
       case 'right':
+        // 插入到当前字段后面（同位置）
         targetRowIndex = rowIndex
         targetColIndex = colIndex + 1
         break
     }
   }
 
+  // 打印移动详细信息
+  const targetRowFields = schema.value.fields[targetRowIndex] || []
+  console.log(`========== [表单内移动] ==========`)
+  console.log(`移动字段: ${draggedFieldLabel}`)
+  console.log(`原位置: [${fromRowIndex}, ${fromColIndex}]`)
+  console.log(`悬浮方位: ${info?.position}`)
+  console.log(`目标位置: [${targetRowIndex}, ${targetColIndex}]`)
+  console.log(`目标行字段数: ${targetRowFields.length}`)
+  console.log(`目标行字段: [${targetRowFields.map(f => f.label).join(', ')}]`)
+  console.log(`移动类型: ${fromRowIndex === targetRowIndex ? '同行' : '跨行'}`)
+  console.log(`当前所有行:`, schema.value.fields.map((r, i) => `[${i}]:[${r.map(f => f.label).join(', ')}]`))
+  console.log(`=================================`)
+
   // 执行移动
   formStore.moveField(fromRowIndex, fromColIndex, targetRowIndex, targetColIndex)
+  
+  // 重新计算目标行的 span
+  recalculateRowSpans(targetRowIndex)
+  // 如果原行和目标行不同，也需要重新计算原行（如果有剩余字段）
+  if (fromRowIndex !== targetRowIndex) {
+    recalculateRowSpans(fromRowIndex)
+  }
 
   // 重置状态
   draggingField.value = null
@@ -540,6 +639,12 @@ const handleInsertDrop = (rowIndex: number, colIndex: number) => {
   // 移动字段
   formStore.moveField(fromRowIndex, fromColIndex, rowIndex, colIndex)
   
+  // 重新计算 span
+  recalculateRowSpans(rowIndex)
+  if (fromRowIndex !== rowIndex) {
+    recalculateRowSpans(fromRowIndex)
+  }
+  
   draggingField.value = null
   dragOverInfo.value = null
 }
@@ -564,6 +669,12 @@ const handleInsertRowDrop = () => {
   
   // 移动到新行
   formStore.moveField(fromRowIndex, fromColIndex, targetRowIndex, 0)
+  
+  // 重新计算 span
+  recalculateRowSpans(targetRowIndex)
+  if (fromRowIndex !== targetRowIndex) {
+    recalculateRowSpans(fromRowIndex)
+  }
   
   draggingField.value = null
   dragOverInfo.value = null
@@ -690,6 +801,12 @@ const processDrop = (event: DragEvent): boolean => {
     // 执行移动
     if (fromRowIndex !== targetRowIndex || fromColIndex !== targetColIndex) {
       formStore.moveField(fromRowIndex, fromColIndex, targetRowIndex, targetColIndex)
+      
+      // 重新计算 span
+      recalculateRowSpans(targetRowIndex)
+      if (fromRowIndex !== targetRowIndex) {
+        recalculateRowSpans(fromRowIndex)
+      }
     }
     
     // 重置状态
@@ -704,11 +821,20 @@ const processDrop = (event: DragEvent): boolean => {
 // 放置处理
 const handleDrop = (event: DragEvent) => {
   event.preventDefault()
+  // 检查是否已经被字段级别的 drop 处理过了
+  // 如果已经处理过，就不再重复处理
+  if (dropProcessed.value) {
+    dropProcessed.value = false
+    return
+  }
   const handled = processDrop(event)
   // 不阻止冒泡，让 handleGlobalDrop 也能触发（用于调试和后备处理）
   // 但 handleGlobalDrop 会检查状态，避免重复处理
   emit('drop', event)
 }
+
+// 标记 drop 事件是否已被处理
+const dropProcessed = ref(false)
 
 // 复制字段
 const handleDuplicate = (field: FormField) => {
@@ -864,6 +990,9 @@ onUnmounted(() => {
     border-radius: 4px;
     transition: all 0.2s;
     position: relative;
+    // GPU 加速优化
+    transform: translateZ(0);
+    backface-visibility: hidden;
     
     &:hover {
       border-color: #dcdfe6;
@@ -887,6 +1016,9 @@ onUnmounted(() => {
       max-width: 25%;
       padding: 8px;
       position: relative;
+      // GPU 加速优化
+      transform: translateZ(0);
+      will-change: transform, opacity;
 
       &.is-selected {
         background: rgba(64, 158, 255, 0.1);

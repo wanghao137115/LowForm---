@@ -86,7 +86,7 @@
 
 <script setup lang="ts">
 import { ref, computed, watch } from 'vue'
-import type { FormSchema, FormField, FieldType } from '@/types/form'
+import type { FormSchema, FieldType } from '@/types/form'
 
 // 直接导入所有字段组件
 import InputField from './fields/InputField.vue'

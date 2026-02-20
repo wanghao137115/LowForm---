@@ -9,7 +9,7 @@
       <el-checkbox
         v-for="opt in field.options"
         :key="opt.value"
-        :label="opt.value"
+        :value="opt.value"
         :disabled="opt.disabled"
       >
         {{ opt.label }}

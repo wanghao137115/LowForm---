@@ -28,7 +28,7 @@ const emit = defineEmits<{
 }>()
 
 const fieldValue = computed({
-  get: () => props.modelValue ?? field.activeValue === true,
+  get: () => props.modelValue ?? props.field.activeValue === true,
   set: (value) => emit('update:modelValue', value)
 })
 

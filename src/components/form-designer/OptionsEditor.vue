@@ -52,7 +52,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, watch, computed } from 'vue'
+import { ref, watch } from 'vue'
 import { Plus, Delete } from '@element-plus/icons-vue'
 import type { OptionItem } from '@/types/form'
 

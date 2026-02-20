@@ -23,7 +23,7 @@
 
 <script setup lang="ts">
 import { computed } from 'vue'
-import type { FormField, FieldType } from '@/types/form'
+import type { FormField } from '@/types/form'
 
 // 直接导入所有字段组件
 import InputField from './fields/InputField.vue'

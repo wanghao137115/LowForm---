@@ -274,7 +274,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch, reactive, onMounted } from 'vue'
+import { ref, computed, watch } from 'vue'
 import { Setting, MagicStick, List, Brush, Grid } from '@element-plus/icons-vue'
 import { useFormStore } from '@/stores/formStore'
 import type { FormField, FieldType } from '@/types/form'

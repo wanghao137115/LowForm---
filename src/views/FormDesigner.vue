@@ -51,6 +51,10 @@
           <el-icon><Download /></el-icon>
           导出JSON
         </el-button>
+        <el-button type="warning" @click="showStressTestConfig">
+          <el-icon><Lightning /></el-icon>
+          压力测试
+        </el-button>
         <el-button type="primary" @click="handleSave">
           <el-icon><Check /></el-icon>
           保存
@@ -126,25 +130,125 @@
     >
       <FormPreview :schema="formStore.schema" />
     </el-dialog>
+
+    <!-- 压力测试配置对话框 -->
+    <el-dialog
+      v-model="stressTestConfigVisible"
+      title="压力测试配置"
+      width="400px"
+      destroy-on-close
+    >
+      <el-form label-position="top">
+        <el-form-item label="测试规模">
+          <el-radio-group v-model="stressTestConfig.fieldCount">
+            <el-radio-button :value="500">500 字段</el-radio-button>
+            <el-radio-button :value="1000">1000 字段</el-radio-button>
+            <el-radio-button :value="1500">1500 字段</el-radio-button>
+          </el-radio-group>
+        </el-form-item>
+        <el-form-item label="测试选项">
+          <el-checkbox v-model="stressTestConfig.testUndo">测试撤销操作</el-checkbox>
+          <el-checkbox v-model="stressTestConfig.testRedo">测试重做操作</el-checkbox>
+        </el-form-item>
+      </el-form>
+      <div class="stress-test-info">
+        <el-alert type="info" :closable="false">
+          此操作将清空当前表单并生成指定数量的字段进行性能测试
+        </el-alert>
+      </div>
+      <template #footer>
+        <el-button @click="stressTestConfigVisible = false">取消</el-button>
+        <el-button type="warning" @click="runStressTest">开始测试</el-button>
+      </template>
+    </el-dialog>
+
+    <!-- 压力测试结果对话框 -->
+    <el-dialog
+      v-model="stressTestDialogVisible"
+      title="压力测试结果"
+      width="550px"
+      destroy-on-close
+    >
+      <div v-if="stressTestResults" class="stress-result">
+        <!-- 性能评级 -->
+        <div class="performance-grade" :class="'grade-' + stressTestResults.grade">
+          <div class="grade-badge">
+            <span class="grade-letter">{{ stressTestResults.grade }}</span>
+            <span class="grade-label">{{ stressTestResults.gradeLabel }}</span>
+          </div>
+          <div class="grade-score">
+            性能得分: <strong>{{ stressTestResults.score }}</strong> / 100
+          </div>
+        </div>
+
+        <el-divider />
+        
+        <el-descriptions :column="1" border size="small">
+          <el-descriptions-item label="测试规模">
+            {{ stressTestResults.fieldCount }} 个字段
+          </el-descriptions-item>
+          <el-descriptions-item label="生成行数">
+            {{ stressTestResults.rowCount }} 行
+          </el-descriptions-item>
+          <el-descriptions-item label="添加耗时" :class="{ 'fast': stressTestResults.addRating === 'A', 'slow': stressTestResults.addRating === 'C' }">
+            {{ stressTestResults.addDuration }} ms
+            <el-tag size="small" :type="getRatingType(stressTestResults.addRating)">
+              {{ stressTestResults.addRating }}
+            </el-tag>
+          </el-descriptions-item>
+          <el-descriptions-item label="添加速度">
+            {{ stressTestResults.addOps }} ops/s
+          </el-descriptions-item>
+          <el-descriptions-item label="撤销耗时">
+            {{ stressTestResults.undoDuration }} ms ({{ stressTestResults.undoCount }} 次)
+          </el-descriptions-item>
+          <el-descriptions-item label="撤销速度">
+            {{ stressTestResults.undoOps }} ops/s
+          </el-descriptions-item>
+          <el-descriptions-item label="重做耗时">
+            {{ stressTestResults.redoDuration }} ms
+          </el-descriptions-item>
+          <el-descriptions-item label="重做速度">
+            {{ stressTestResults.redoOps }} ops/s
+          </el-descriptions-item>
+          <el-descriptions-item label="总耗时">
+            {{ stressTestResults.totalDuration }} ms
+          </el-descriptions-item>
+        </el-descriptions>
+
+        <!-- 性能建议 -->
+        <div class="performance-tips">
+          <h4>💡 性能建议</h4>
+          <ul>
+            <li v-for="tip in stressTestResults.tips" :key="tip">{{ tip }}</li>
+          </ul>
+        </div>
+      </div>
+      <template #footer>
+        <el-button type="primary" @click="stressTestDialogVisible = false">确定</el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
 <script setup lang="ts">
 import { ref, reactive, onMounted, onUnmounted } from 'vue'
-import { useRouter } from 'vue-router'
-import { ElMessage, ElMessageBox } from 'element-plus'
+import { ElMessage } from 'element-plus'
 import { 
-  Edit, View, Upload, Download, Check, Monitor, Pointer, RefreshLeft, RefreshRight
+  Edit, View, Upload, Download, Check, Monitor, Pointer, RefreshLeft, RefreshRight, Lightning
 } from '@element-plus/icons-vue'
 import ComponentPanel from '@/components/form-designer/ComponentPanel.vue'
 import FormCanvas from '@/components/form-designer/FormCanvas.vue'
 import PropertyPanel from '@/components/form-designer/PropertyPanel.vue'
-import FormPreview from '@/components/form-designer/FormPreview.vue'
+// FormPreview 懒加载：使用异步组件延迟加载，提升初始渲染性能
+import { defineAsyncComponent } from 'vue'
+const FormPreview = defineAsyncComponent(() => 
+  import('@/components/form-designer/FormPreview.vue')
+)
 import { useFormStore } from '@/stores/formStore'
 import { exportSchema, importSchema } from '@/utils/drag'
 import type { FormField } from '@/types/form'
 
-const router = useRouter()
 const formStore = useFormStore()
 
 // 响应式状态
@@ -243,6 +347,197 @@ const handleExport = () => {
   const schema = formStore.schema
   exportSchema(schema, `form-schema-${Date.now()}`)
   ElMessage.success('导出成功')
+}
+
+// 压力测试
+const stressTestLoading = ref(false)
+const stressTestResults = ref<any>(null)
+const stressTestDialogVisible = ref(false)
+const stressTestConfigVisible = ref(false)
+const stressTestConfig = ref({
+  fieldCount: 1000,
+  testUndo: true,
+  testRedo: true
+})
+
+// 性能评级计算
+const calculatePerformanceGrade = (fieldCount: number, addDuration: number, addOps: number, undoOps: number, redoOps: number) => {
+  let score = 100
+  const tips: string[] = []
+  
+  // 根据字段数量评估
+  const baseTime = fieldCount * 0.5 // 基础期望时间（ms/字段）
+  
+  // 添加操作评分
+  let addRating = 'A'
+  if (addDuration > baseTime * fieldCount * 0.5) {
+    score -= 30
+    addRating = 'C'
+    tips.push('添加字段性能较差，建议减少单行字段数量')
+  } else if (addDuration > baseTime * fieldCount * 0.2) {
+    score -= 15
+    addRating = 'B'
+  } else {
+    tips.push('✅ 添加字段性能优秀')
+  }
+  
+  // 撤销操作评分
+  if (undoOps < 1000) {
+    score -= 20
+    tips.push('撤销操作较慢，可能是状态管理开销较大')
+  } else if (undoOps < 5000) {
+    score -= 10
+  } else {
+    tips.push('✅ 撤销操作性能良好')
+  }
+  
+  // 重做操作评分
+  if (redoOps < 1000) {
+    score -= 20
+    tips.push('重做操作较慢，可能是状态管理开销较大')
+  } else if (redoOps < 5000) {
+    score -= 10
+  } else {
+    tips.push('✅ 重做操作性能良好')
+  }
+  
+  // 内存相关建议
+  if (fieldCount >= 1000) {
+    if (addDuration > 1000) {
+      tips.push('💾 大量字段时建议使用虚拟滚动优化渲染性能')
+    }
+  }
+  
+  // 限制分数范围
+  score = Math.max(0, Math.min(100, score))
+  
+  // 评级
+  let grade: string
+  let gradeLabel: string
+  
+  if (score >= 90) {
+    grade = 'A'
+    gradeLabel = '卓越'
+  } else if (score >= 75) {
+    grade = 'B'
+    gradeLabel = '优秀'
+  } else if (score >= 60) {
+    grade = 'C'
+    gradeLabel = '一般'
+  } else if (score >= 40) {
+    grade = 'D'
+    gradeLabel = '较差'
+  } else {
+    grade = 'E'
+    gradeLabel = '极差'
+  }
+  
+  return { score, grade, gradeLabel, addRating, tips }
+}
+
+const getRatingType = (rating: string) => {
+  switch (rating) {
+    case 'A': return 'success'
+    case 'B': return 'primary'
+    case 'C': return 'warning'
+    default: return 'info'
+  }
+}
+
+// 显示测试配置对话框
+const showStressTestConfig = () => {
+  stressTestConfigVisible.value = true
+}
+
+// 执行压力测试
+const runStressTest = async () => {
+  stressTestConfigVisible.value = false
+  const { fieldCount, testUndo, testRedo } = stressTestConfig.value
+  
+  try {
+    stressTestLoading.value = true
+    
+    // 清空当前表单
+    formStore.clearForm()
+    
+    const fieldTypes: ('input' | 'textarea' | 'select' | 'radio' | 'checkbox' | 'switch' | 'date' | 'number')[] = 
+      ['input', 'textarea', 'select', 'radio', 'checkbox', 'switch', 'date', 'number']
+    
+    // 开始计时
+    const startTime = performance.now()
+    
+    // 批量添加字段
+    for (let i = 0; i < fieldCount; i++) {
+      const fieldType = fieldTypes[i % fieldTypes.length]
+      formStore.addField(fieldType, { label: `测试字段${i}` })
+    }
+    
+    const addDuration = performance.now() - startTime
+    const fieldsCount = formStore.schema.fields.flat().length
+    const rowsCount = formStore.schema.fields.length
+    
+    let undoCount = 0
+    let undoDuration = 0
+    let undoOps = 0
+    let redoDuration = 0
+    let redoOps = 0
+    
+    // 测试撤销操作
+    if (testUndo) {
+      const undoStartTime = performance.now()
+      undoCount = Math.min(100, fieldsCount)
+      for (let i = 0; i < undoCount; i++) {
+        formStore.undo()
+      }
+      undoDuration = performance.now() - undoStartTime
+      undoOps = undoCount > 0 ? Math.round(undoCount / (undoDuration / 1000)) : 0
+    }
+    
+    // 测试重做操作
+    if (testRedo) {
+      const redoStartTime = performance.now()
+      for (let i = 0; i < undoCount; i++) {
+        formStore.redo()
+      }
+      redoDuration = performance.now() - redoStartTime
+      redoOps = undoCount > 0 ? Math.round(undoCount / (redoDuration / 1000)) : 0
+    }
+    
+    const totalDuration = performance.now() - startTime
+    
+    const addOps = Math.round(fieldCount / (addDuration / 1000))
+    
+    // 计算性能评级
+    const { score, grade, gradeLabel, addRating, tips } = calculatePerformanceGrade(
+      fieldCount, addDuration, addOps, undoOps, redoOps
+    )
+    
+    // 显示结果
+    stressTestResults.value = {
+      fieldCount: fieldsCount,
+      rowCount: rowsCount,
+      addDuration: addDuration.toFixed(2),
+      addOps: addOps.toLocaleString(),
+      addRating,
+      undoCount,
+      undoDuration: undoDuration.toFixed(2),
+      undoOps: undoOps.toLocaleString(),
+      redoDuration: redoDuration.toFixed(2),
+      redoOps: redoOps.toLocaleString(),
+      totalDuration: totalDuration.toFixed(2),
+      score,
+      grade,
+      gradeLabel,
+      tips
+    }
+    
+    ElMessage.success('压力测试完成！')
+    stressTestDialogVisible.value = true
+  } catch (error) {
+    ElMessage.error('压力测试失败')
+  } finally {
+    stressTestLoading.value = false
+  }
 }
 
 // 保存
@@ -399,6 +694,118 @@ onUnmounted(() => {
       display: flex;
       align-items: center;
       justify-content: center;
+    }
+  }
+}
+
+.stress-result {
+  .el-descriptions {
+    font-size: 14px;
+  }
+  
+  .el-descriptions-item__label {
+    font-weight: 600;
+    width: 120px;
+  }
+  
+  .fast {
+    color: #67c23a;
+    font-weight: 600;
+  }
+  
+  .slow {
+    color: #f56c6c;
+    font-weight: 600;
+  }
+}
+
+.stress-test-info {
+  margin-top: 16px;
+}
+
+// 性能评级样式
+.performance-grade {
+  text-align: center;
+  padding: 20px;
+  border-radius: 8px;
+  margin-bottom: 16px;
+  
+  &.grade-A {
+    background: linear-gradient(135deg, #67c23a 0%, #85ce61 100%);
+    color: white;
+  }
+  
+  &.grade-B {
+    background: linear-gradient(135deg, #409eff 0%, #66b1ff 100%);
+    color: white;
+  }
+  
+  &.grade-C {
+    background: linear-gradient(135deg, #e6a23c 0%, #ebb563 100%);
+    color: white;
+  }
+  
+  &.grade-D {
+    background: linear-gradient(135deg, #f56c6c 0%, #f78989 100%);
+    color: white;
+  }
+  
+  &.grade-E {
+    background: linear-gradient(135deg, #909399 0%, #a6a9ad 100%);
+    color: white;
+  }
+  
+  .grade-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 12px;
+    
+    .grade-letter {
+      font-size: 48px;
+      font-weight: bold;
+      width: 60px;
+      height: 60px;
+      line-height: 60px;
+      border-radius: 50%;
+      background: rgba(255, 255, 255, 0.3);
+    }
+    
+    .grade-label {
+      font-size: 24px;
+      font-weight: 600;
+    }
+  }
+  
+  .grade-score {
+    margin-top: 12px;
+    font-size: 16px;
+    
+    strong {
+      font-size: 20px;
+    }
+  }
+}
+
+.performance-tips {
+  margin-top: 16px;
+  padding: 12px;
+  background: #f5f7fa;
+  border-radius: 4px;
+  
+  h4 {
+    margin: 0 0 8px 0;
+    font-size: 14px;
+    color: #303133;
+  }
+  
+  ul {
+    margin: 0;
+    padding-left: 20px;
+    
+    li {
+      font-size: 13px;
+      color: #606266;
+      line-height: 1.8;
     }
   }
 }

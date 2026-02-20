@@ -24,7 +24,7 @@
 import { Upload } from '@element-plus/icons-vue'
 import type { UploadField } from '@/types/form'
 
-const props = defineProps<{
+defineProps<{
   field: UploadField
   mode: 'design' | 'preview' | 'form'
 }>()

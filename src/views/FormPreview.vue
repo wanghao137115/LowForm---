@@ -30,13 +30,11 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, onMounted } from 'vue'
+import { reactive, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { ArrowLeft, Check } from '@element-plus/icons-vue'
-import { ElMessage } from 'element-plus'
 import FormRenderer from '@/components/form-renderer/FormRenderer.vue'
 import { useFormStore } from '@/stores/formStore'
-import type { FormSchema } from '@/types/form'
 
 const router = useRouter()
 const formStore = useFormStore()

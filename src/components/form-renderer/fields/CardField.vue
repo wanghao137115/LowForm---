@@ -15,7 +15,7 @@
 <script setup lang="ts">
 import type { CardField } from '@/types/form'
 
-const props = defineProps<{
+defineProps<{
   field: CardField
   mode: 'design' | 'preview' | 'form'
 }>()

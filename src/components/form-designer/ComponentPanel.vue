@@ -86,13 +86,8 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed } from 'vue'
-import { 
-  Box, Grid, Menu, Edit, 
-  Picture, Star, List,
-  Calendar, Timer, Brush, Switch,
-  Connection, Clock, Bell
-} from '@element-plus/icons-vue'
+import { ref } from 'vue'
+import { Box, Grid, Menu } from '@element-plus/icons-vue'
 import { useFormStore } from '@/stores/formStore'
 import type { FieldType, ComponentPanelItem } from '@/types/form'
 
@@ -103,18 +98,18 @@ const componentPanelItems: ComponentPanelItem[] = [
   { type: 'textarea', icon: 'Edit', label: '文本域', category: 'basic', defaultProps: { rows: 3 } },
   { type: 'number', icon: 'Edit', label: '数字输入', category: 'basic', defaultProps: { step: 1 } },
   { type: 'select', icon: 'List', label: '下拉选择', category: 'basic', defaultProps: { placeholder: '请选择' } },
-  { type: 'radio', icon: 'Bell', label: '单选框', category: 'basic', defaultProps: {} },
-  { type: 'checkbox', icon: 'Bell', label: '复选框', category: 'basic', defaultProps: {} },
+  { type: 'radio', icon: 'List', label: '单选框', category: 'basic', defaultProps: {} },
+  { type: 'checkbox', icon: 'List', label: '复选框', category: 'basic', defaultProps: {} },
   { type: 'switch', icon: 'Switch', label: '开关', category: 'basic', defaultProps: {} },
   
   // 增强字段
   { type: 'date', icon: 'Calendar', label: '日期选择', category: 'enhanced', defaultProps: { type: 'date', format: 'YYYY-MM-DD' } },
   { type: 'time', icon: 'Clock', label: '时间选择', category: 'enhanced', defaultProps: { type: 'time', format: 'HH:mm:ss' } },
-  { type: 'datetime', icon: 'Timer', label: '日期时间', category: 'enhanced', defaultProps: { type: 'datetime', format: 'YYYY-MM-DD HH:mm:ss' } },
+  { type: 'datetime', icon: 'Clock', label: '日期时间', category: 'enhanced', defaultProps: { type: 'datetime', format: 'YYYY-MM-DD HH:mm:ss' } },
   { type: 'cascader', icon: 'Connection', label: '级联选择', category: 'enhanced', defaultProps: { placeholder: '请选择' } },
-  { type: 'upload', icon: 'Picture', label: '上传组件', category: 'enhanced', defaultProps: { action: '#', limit: 5 } },
+  { type: 'upload', icon: 'Upload', label: '上传组件', category: 'enhanced', defaultProps: { action: '#', limit: 5 } },
   { type: 'rate', icon: 'Star', label: '评分', category: 'enhanced', defaultProps: { max: 5 } },
-  { type: 'slider', icon: 'Brush', label: '滑块', category: 'enhanced', defaultProps: { min: 0, max: 100 } },
+  { type: 'slider', icon: 'Switch', label: '滑块', category: 'enhanced', defaultProps: { min: 0, max: 100 } },
   { type: 'color', icon: 'Brush', label: '颜色选择', category: 'enhanced', defaultProps: { showAlpha: false } },
   { type: 'tree-select', icon: 'Grid', label: '树选择', category: 'enhanced', defaultProps: {} },
   

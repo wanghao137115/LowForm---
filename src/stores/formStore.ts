@@ -1,6 +1,5 @@
 // 表单设计器Store
-import { defineStore } from 'pinia'
-import { ref, computed } from 'vue'
+import { ref, shallowRef, triggerRef, computed } from 'vue'
 import { generateId, getDefaultProps } from '@/utils/drag'
 import type { 
   FormField, 
@@ -12,8 +11,9 @@ import type {
 export const useFormStore = defineStore('form', () => {
   // ========== 状态 ==========
   
-  // 表单schema - 使用二维数组结构
-  const schema = ref<FormSchema>({
+  // 表单schema - 使用浅响应式，避免深度追踪性能开销
+  // 使用 shallowRef 可以在大量字段时显著提升性能
+  const schema = shallowRef<FormSchema>({
     id: generateId(),
     name: '未命名表单',
     description: '',
@@ -50,6 +50,12 @@ export const useFormStore = defineStore('form', () => {
   
   const actionHistory = ref<HistoryAction[]>([])
   const actionIndex = ref(-1)
+  
+  // 辅助函数：触发 shallowRef 更新
+  // 使用 shallowRef 时，直接修改内部属性不会触发更新，需要手动调用 triggerRef
+  const triggerSchemaUpdate = () => {
+    triggerRef(schema)
+  }
   
   // ========== 计算属性 ==========
   
@@ -209,6 +215,7 @@ export const useFormStore = defineStore('form', () => {
     
     selectedFieldId.value = field.id
     
+    triggerSchemaUpdate()
     return field
   }
   
@@ -299,6 +306,9 @@ export const useFormStore = defineStore('form', () => {
         
         // 记录删除操作
         recordDeleteAction(deletedField, rowIndex, index)
+        
+        // 触发响应式更新
+        triggerSchemaUpdate()
         return
       }
     }
@@ -318,11 +328,12 @@ export const useFormStore = defineStore('form', () => {
     toColIndex: number
   ): void => {
     const field = schema.value.fields[fromRowIndex]?.[fromColIndex]
-    console.log('[moveField] 开始执行:', {
-      from: { row: fromRowIndex, col: fromColIndex },
-      to: { row: toRowIndex, col: toColIndex },
-      fieldLabel: field?.label
-    })
+    console.log('[moveField] ========== 开始 ==========')
+    console.log('[moveField] 字段:', field?.label)
+    console.log('[moveField] 从:', `[${fromRowIndex}, ${fromColIndex}]`)
+    console.log('[moveField] 到:', `[${toRowIndex}, ${toColIndex}]`)
+    console.log('[moveField] 移动前数组:', schema.value.fields.map((r, i) => `[${i}]:[${r.map(f => f.label).join(',')}]`))
+    console.log('[moveField] =========================')
     
     if (!field) {
       console.log('[moveField] 字段不存在')
@@ -331,7 +342,7 @@ export const useFormStore = defineStore('form', () => {
 
     // 移除原位置的字段
     schema.value.fields[fromRowIndex].splice(fromColIndex, 1)
-    console.log('[moveField] 移除字段后，fields:', JSON.stringify(schema.value.fields.map(r => r.map(f => f.label))))
+    console.log('[moveField] 移除后数组:', schema.value.fields.map((r, i) => `[${i}]:[${r.map(f => f.label).join(',')}]`))
 
     // 如果原行为空，删除该行
     if (schema.value.fields[fromRowIndex].length === 0) {
@@ -344,16 +355,26 @@ export const useFormStore = defineStore('form', () => {
       }
     }
 
-    // 跨行移动时，调整目标列索引
+    // 跨行移动时，根据目标行字段数量决定插入位置
     if (fromRowIndex !== toRowIndex) {
-      // 跨行移动时，将字段添加到目标行的末尾
-      toColIndex = schema.value.fields[toRowIndex]?.length || 0
-      console.log('[moveField] 跨行移动，调整目标列为末尾:', toColIndex)
+      // 获取目标行当前字段数
+      const targetRowLength = schema.value.fields[toRowIndex]?.length || 0
+      
+      if (toColIndex >= targetRowLength) {
+        // 列索引超出目标行长度，放到末尾
+        toColIndex = targetRowLength
+        console.log('[moveField] 跨行移动，列超出范围，放到末尾:', toColIndex)
+      } else {
+        // 列索引在有效范围内，尊重指定位置
+        console.log('[moveField] 跨行移动，尊重指定位置:', toColIndex)
+      }
     } else {
       // 同行移动时，调整列索引（移除元素后，后面的元素前移）
       if (fromColIndex < toColIndex) {
         toColIndex--
-        console.log('[moveField] 同行移动，调整列索引:', toColIndex)
+        console.log('[moveField] 同行从左移向右，调整列索引:', toColIndex)
+      } else if (fromColIndex > toColIndex) {
+        console.log('[moveField] 同行从右移向左，列索引不变')
       }
       // 确保列索引不超出范围
       toColIndex = Math.min(toColIndex, schema.value.fields[toRowIndex]?.length || 0)
@@ -372,7 +393,11 @@ export const useFormStore = defineStore('form', () => {
     // 记录移动操作（使用原始的 toRow, toColIndexIndex 和 toColIndex）
     recordMoveAction(field, fromRowIndex, fromColIndex, toRowIndex, toColIndex)
     
-    console.log('[moveField] 最终结果:', JSON.stringify(schema.value.fields.map(r => r.map(f => f.label))))
+    console.log('[moveField] 插入后数组:', schema.value.fields.map((r, i) => `[${i}]:[${r.map(f => f.label).join(',')}]`))
+    console.log('[moveField] ========== 结束 ==========')
+    
+    // 触发响应式更新
+    triggerSchemaUpdate()
   }
   
   /**
@@ -394,6 +419,8 @@ export const useFormStore = defineStore('form', () => {
         
         recordAddAction(newField, rowIndex, colIndex + 1)
         selectedFieldId.value = newField.id
+        
+        triggerSchemaUpdate()
         
         return newField
       }
@@ -418,6 +445,8 @@ export const useFormStore = defineStore('form', () => {
           schema.value.fields.splice(rowIndex, 1)
         }
         
+        // 触发响应式更新
+        triggerSchemaUpdate()
         return
       }
     }
@@ -440,6 +469,8 @@ export const useFormStore = defineStore('form', () => {
           schema.value.fields.splice(rowIndex, 1)
         }
         
+        // 触发响应式更新
+        triggerSchemaUpdate()
         return
       }
     }
@@ -775,7 +806,9 @@ export const useFormStore = defineStore('form', () => {
     clearForm,
     undo,
     redo,
-    selectField: (id: string | null) => { selectedFieldId.value = id },
+    selectField: (id: string | null) => { 
+      selectedFieldId.value = id 
+    },
     updateFields: (fields: FormField[][]) => {
       schema.value.fields = fields
     }

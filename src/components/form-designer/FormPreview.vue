@@ -136,7 +136,7 @@
                     <el-radio
                       v-for="opt in field.options"
                       :key="opt.value"
-                      :label="opt.value"
+                      :value="opt.value"
                       :disabled="opt.disabled"
                     >
                       {{ opt.label }}
@@ -152,7 +152,7 @@
                     <el-checkbox
                       v-for="opt in field.options"
                       :key="opt.value"
-                      :label="opt.value"
+                      :value="opt.value"
                       :disabled="opt.disabled"
                     >
                       {{ opt.label }}
@@ -295,8 +295,7 @@
 <script setup lang="ts">
 import { ref, reactive, watch, onMounted } from 'vue'
 import { Upload } from '@element-plus/icons-vue'
-import type { FormSchema, FormField } from '@/types/form'
-import { ElMessage } from 'element-plus'
+import type { FormSchema } from '@/types/form'
 
 // Props
 const props = withDefaults(defineProps<{
@@ -322,8 +321,6 @@ const formRules = reactive<Record<string, any>>({})
 
 // 初始化表单数据 - 只初始化新字段，保留已有值
 const initFormData = () => {
-  const existingFields = new Set(Object.keys(formData))
-  
   // 遍历所有字段
   props.schema.fields.forEach(row => {
     row.forEach(field => {
