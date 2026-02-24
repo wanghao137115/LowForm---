@@ -121,14 +121,14 @@ export const useFormStore = defineStore('form', () => {
       
       // 如果指定了列索引，插入到指定位置
       if (targetColIndex !== undefined && targetColIndex >= 0 && targetColIndex <= targetRow.length) {
-        // 检查该行是否为空
-        const isEmptyRow = targetRow.length === 0
-        
-        if (isEmptyRow) {
-          // 空行，新字段占满
-          field.span = 24
-          schema.value.fields[targetRowIndex].push(field)
-        } else {
+      // 检查该行是否为空
+      const isEmptyRow = targetRow.length === 0
+      
+      if (isEmptyRow) {
+        // 空行，新字段占满
+        field.span = 24
+        schema.value.fields[targetRowIndex].push(field)
+      } else {
           // 非空行，检查是否已满（4个元素）
           if (targetRow.length >= 4) {
             return field
@@ -157,14 +157,14 @@ export const useFormStore = defineStore('form', () => {
             return field
           }
           // 尝试添加到该行
-          targetRow.push(field)
-          const newCount = targetRow.length
-          const newSpan = Math.floor(24 / newCount)
-          // 重新分配 span，最后一个元素填充剩余空间
-          targetRow.forEach((f, idx) => {
-            f.span = idx === newCount - 1 ? 24 - newSpan * (newCount - 1) : newSpan
-          })
-        }
+        targetRow.push(field)
+        const newCount = targetRow.length
+        const newSpan = Math.floor(24 / newCount)
+        // 重新分配 span，最后一个元素填充剩余空间
+        targetRow.forEach((f, idx) => {
+          f.span = idx === newCount - 1 ? 24 - newSpan * (newCount - 1) : newSpan
+        })
+      }
       }
       
       // 查找刚添加的字段位置并记录添加操作
@@ -175,8 +175,8 @@ export const useFormStore = defineStore('form', () => {
         }
         recordAddAction(field, addedRowIndex, addedColIndex)
         
-        selectedFieldId.value = field.id
-        return field
+      selectedFieldId.value = field.id
+      return field
     }
     
     // 默认添加到新行或第一行
@@ -392,7 +392,7 @@ export const useFormStore = defineStore('form', () => {
 
     // 记录移动操作（使用原始的 toRow, toColIndexIndex 和 toColIndex）
     recordMoveAction(field, fromRowIndex, fromColIndex, toRowIndex, toColIndex)
-    
+
     console.log('[moveField] 插入后数组:', schema.value.fields.map((r, i) => `[${i}]:[${r.map(f => f.label).join(',')}]`))
     console.log('[moveField] ========== 结束 ==========')
     
@@ -705,7 +705,7 @@ export const useFormStore = defineStore('form', () => {
       })
     }
     
-    selectedFieldId.value = null
+      selectedFieldId.value = null
   }
   
   // ========== 私有方法 ==========

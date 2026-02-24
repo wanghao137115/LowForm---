@@ -55,6 +55,10 @@
           <el-icon><Lightning /></el-icon>
           压力测试
         </el-button>
+        <el-button type="info" @click="openAIDialog">
+          <el-icon><ChatDotRound /></el-icon>
+          AI 生成
+        </el-button>
         <el-button type="primary" @click="handleSave">
           <el-icon><Check /></el-icon>
           保存
@@ -228,6 +232,167 @@
         <el-button type="primary" @click="stressTestDialogVisible = false">确定</el-button>
       </template>
     </el-dialog>
+
+    <!-- AI 生成对话框 -->
+    <el-dialog
+      v-model="aiDialogVisible"
+      title="🤖 AI 智能表单生成"
+      width="700px"
+      :close-on-click-modal="false"
+      destroy-on-close
+    >
+      <div class="ai-generator">
+        <!-- 输入区域 -->
+        <div class="input-section">
+          <el-input
+            v-model="aiPrompt"
+            type="textarea"
+            :rows="4"
+            placeholder="请描述你想要的表单，例如：创建一个用户注册表单，包含姓名、手机号、邮箱..."
+            @keydown.enter.ctrl="handleAIGenerate"
+          />
+          <div class="input-tips">
+            <span>💡 提示：按 Ctrl + Enter 快速生成</span>
+          </div>
+        </div>
+
+        <!-- 预设模板 -->
+        <div class="templates-section">
+          <div class="section-title">📋 推荐模板</div>
+          <div class="template-list">
+            <div 
+              v-for="tpl in templatePrompts" 
+              :key="tpl.label"
+              class="template-item"
+              @click="generateFromTemplate(tpl.prompt)"
+            >
+              {{ tpl.label }}
+            </div>
+          </div>
+        </div>
+
+        <!-- 生成结果 -->
+        <div v-if="generatedSchema" class="result-section">
+          <el-alert
+            :title="aiMessage"
+            type="success"
+            :closable="false"
+            show-icon
+          />
+          <div class="preview-info">
+            <span>📊 生成字段数：{{ generatedSchema.fields.flat().length }}</span>
+            <span>📐 生成行数：{{ generatedSchema.fields.length }}</span>
+          </div>
+          
+          <!-- 表单预览区域 -->
+          <div class="form-preview-section">
+            <div class="section-title">👀 表单预览</div>
+            <div class="preview-container">
+              <el-form label-position="top" size="default">
+                <el-row :gutter="20">
+                  <el-col 
+                    v-for="(field, idx) in generatedSchema.fields.flat()" 
+                    :key="field.id || idx"
+                    :span="field.span || 12"
+                  >
+                    <el-form-item :label="field.label" :required="field.required">
+                      <!-- 根据不同类型显示不同预览 -->
+                      <el-input 
+                        v-if="field.type === 'input'" 
+                        :placeholder="field.placeholder || '请输入'" 
+                        disabled
+                      />
+                      <el-input 
+                        v-else-if="field.type === 'textarea'" 
+                        type="textarea"
+                        :rows="3"
+                        :placeholder="field.placeholder || '请输入'" 
+                        disabled
+                      />
+                      <el-select 
+                        v-else-if="field.type === 'select'" 
+                        placeholder="请选择" 
+                        disabled
+                        style="width: 100%"
+                      >
+                        <el-option
+                          v-for="opt in field.options"
+                          :key="opt.value"
+                          :label="opt.label"
+                          :value="opt.value"
+                        />
+                      </el-select>
+                      <el-radio-group v-else-if="field.type === 'radio'">
+                        <el-radio
+                          v-for="opt in field.options"
+                          :key="opt.value"
+                          :value="opt.value"
+                          disabled
+                        >
+                          {{ opt.label }}
+                        </el-radio>
+                      </el-radio-group>
+                      <el-checkbox-group v-else-if="field.type === 'checkbox'">
+                        <el-checkbox
+                          v-for="opt in field.options"
+                          :key="opt.value"
+                          :value="opt.value"
+                          disabled
+                        >
+                          {{ opt.label }}
+                        </el-checkbox>
+                      </el-checkbox-group>
+                      <el-switch v-else-if="field.type === 'switch'" disabled />
+                      <el-date-picker 
+                        v-else-if="field.type === 'date'" 
+                        type="date" 
+                        placeholder="选择日期" 
+                        disabled
+                        style="width: 100%"
+                      />
+                      <el-input-number 
+                        v-else-if="field.type === 'number'" 
+                        :min="0" 
+                        disabled
+                        style="width: 100%"
+                      />
+                      <el-rate v-else-if="field.type === 'rate'" disabled />
+                      <el-slider v-else-if="field.type === 'slider'" disabled />
+                      <span v-else class="unsupported-type">不支持的类型: {{ field.type }}</span>
+                    </el-form-item>
+                  </el-col>
+                </el-row>
+              </el-form>
+            </div>
+          </div>
+        </div>
+
+        <!-- 加载状态 -->
+        <div v-if="aiLoading" class="loading-section">
+          <el-icon class="is-loading"><Loading /></el-icon>
+          <span>AI 正在思考中...</span>
+        </div>
+      </div>
+
+      <template #footer>
+        <el-button @click="aiDialogVisible = false">取消</el-button>
+        <el-button 
+          v-if="generatedSchema" 
+          type="primary" 
+          @click="applyGeneratedSchema"
+        >
+          应用到画布（将清空现有表单）
+        </el-button>
+        <el-button 
+          type="success" 
+          :loading="aiLoading"
+          @click="handleAIGenerate"
+        >
+          <el-icon><ChatDotRound /></el-icon>
+          一键生成
+        </el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
@@ -235,7 +400,7 @@
 import { ref, reactive, onMounted, onUnmounted } from 'vue'
 import { ElMessage } from 'element-plus'
 import { 
-  Edit, View, Upload, Download, Check, Monitor, Pointer, RefreshLeft, RefreshRight, Lightning
+  Edit, View, Upload, Download, Check, Monitor, Pointer, RefreshLeft, RefreshRight, Lightning, ChatDotRound, Loading
 } from '@element-plus/icons-vue'
 import ComponentPanel from '@/components/form-designer/ComponentPanel.vue'
 import FormCanvas from '@/components/form-designer/FormCanvas.vue'
@@ -247,7 +412,8 @@ const FormPreview = defineAsyncComponent(() =>
 )
 import { useFormStore } from '@/stores/formStore'
 import { exportSchema, importSchema } from '@/utils/drag'
-import type { FormField } from '@/types/form'
+import { generateFormByAI, templatePrompts } from '@/utils/aiGenerator'
+import type { FormField, FormSchema } from '@/types/form'
 
 const formStore = useFormStore()
 
@@ -359,6 +525,13 @@ const stressTestConfig = ref({
   testUndo: true,
   testRedo: true
 })
+
+// AI 生成相关状态
+const aiDialogVisible = ref(false)
+const aiPrompt = ref('')
+const aiLoading = ref(false)
+const aiMessage = ref('')
+const generatedSchema = ref<FormSchema | null>(null)
 
 // 性能评级计算
 const calculatePerformanceGrade = (fieldCount: number, addDuration: number, addOps: number, undoOps: number, redoOps: number) => {
@@ -555,6 +728,55 @@ const handleSave = async () => {
 // 预览
 const handlePreview = () => {
   previewVisible.value = true
+}
+
+// 打开 AI 生成对话框
+const openAIDialog = () => {
+  aiDialogVisible.value = true
+  aiPrompt.value = ''
+  aiMessage.value = ''
+  generatedSchema.value = null
+}
+
+// 使用模板生成
+const generateFromTemplate = (prompt: string) => {
+  aiPrompt.value = prompt
+  handleAIGenerate()
+}
+
+// AI 生成处理
+const handleAIGenerate = async () => {
+  if (!aiPrompt.value.trim()) {
+    ElMessage.warning('请输入表单描述')
+    return
+  }
+
+  aiLoading.value = true
+  aiMessage.value = '🤖 AI 正在生成表单，请稍候...'
+  generatedSchema.value = null
+
+  const result = await generateFormByAI(aiPrompt.value)
+
+  aiLoading.value = false
+
+  if (result.success) {
+    generatedSchema.value = result.schema
+    aiMessage.value = `✅ ${result.message}`
+  } else {
+    aiMessage.value = `❌ ${result.message}`
+    ElMessage.error(result.message)
+  }
+}
+
+// 应用生成的表单（清空现有表单）
+const applyGeneratedSchema = () => {
+  if (generatedSchema.value) {
+    // 清空现有表单并加载新表单
+    formStore.clearForm()
+    formStore.schema.fields = generatedSchema.value.fields
+    ElMessage.success('AI 表单已应用到画布')
+    aiDialogVisible.value = false
+  }
 }
 
 // 生命周期
@@ -806,6 +1028,113 @@ onUnmounted(() => {
       font-size: 13px;
       color: #606266;
       line-height: 1.8;
+    }
+  }
+}
+
+// AI 生成器样式
+.ai-generator {
+  .input-section {
+    margin-bottom: 20px;
+    
+    .input-tips {
+      margin-top: 8px;
+      font-size: 12px;
+      color: #909399;
+    }
+  }
+
+  .templates-section {
+    margin-bottom: 20px;
+    
+    .section-title {
+      font-size: 14px;
+      font-weight: 600;
+      margin-bottom: 12px;
+      color: #303133;
+    }
+    
+    .template-list {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      
+      .template-item {
+        padding: 8px 16px;
+        background: #f5f7fa;
+        border: 1px solid #dcdfe6;
+        border-radius: 4px;
+        cursor: pointer;
+        font-size: 13px;
+        transition: all 0.2s;
+        
+        &:hover {
+          background: #ecf5ff;
+          border-color: #409eff;
+          color: #409eff;
+        }
+      }
+    }
+  }
+
+  .result-section {
+    margin-top: 20px;
+    
+    .preview-info {
+      margin-top: 12px;
+      display: flex;
+      gap: 20px;
+      font-size: 13px;
+      color: #606266;
+    }
+    
+    .form-preview-section {
+      margin-top: 20px;
+      padding: 16px;
+      background: #f5f7fa;
+      border-radius: 8px;
+      max-height: 400px;
+      overflow-y: auto;
+      
+      .section-title {
+        font-size: 14px;
+        font-weight: 600;
+        margin-bottom: 12px;
+        color: #303133;
+      }
+      
+      .preview-container {
+        background: #fff;
+        padding: 16px;
+        border-radius: 4px;
+        border: 1px solid #ebeef5;
+        
+        .unsupported-type {
+          color: #909399;
+          font-size: 12px;
+        }
+        
+        :deep(.el-form-item) {
+          margin-bottom: 12px;
+        }
+        
+        :deep(.el-form-item__label) {
+          font-weight: 500;
+        }
+      }
+    }
+  }
+
+  .loading-section {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    padding: 20px;
+    color: #409eff;
+    
+    .el-icon {
+      font-size: 20px;
     }
   }
 }
